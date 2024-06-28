@@ -12,9 +12,12 @@
   "author": "IvanL",
   "license": "ISC",
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dayjs": "^1.11.11",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-telegram-bot-api": "^0.66.0",
     "pg": "^8.12.0",
     "sequelize": "^6.37.3",
     "uuid": "^10.0.0"
