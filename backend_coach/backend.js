@@ -133,6 +133,12 @@ const ClientTable = sequelize.define("client_table", {
   client_messenger: {
     type: Sequelize.STRING,
   },
+  clientId: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+ 
+    allowNull: false,
+  },
 });
 
 const ActivityTable = sequelize.define("activity_table", {
@@ -159,6 +165,10 @@ const ActivityTable = sequelize.define("activity_table", {
     type: Sequelize.STRING,
   },
 });
+
+
+ClientTable.hasMany(ActivityTable)
+ActivityTable.belongsTo(ClientTable)
 
 sequelize
   .sync()
@@ -248,22 +258,26 @@ app.use(async function (req, res, next) {
   // console.log(tokens, "<------Tut?");
 
 
-  if (!tokens) return res.status(404).end();
+  if (!tokens) {
+
+    return res.status(404).end();
+  }
+
+ 
 
   if (verifyAccessToken(tokens.token).success) {
     console.log("первый этап");
     next();
-  // } else if (await findRefreshDB(tokens.refreshToken)) {
-  //   let newTokens = await refreshRefreshTokenDB(tokens.refreshToken);
+  } else if (await findRefreshDB(tokens.refreshToken)) {
 
-  //   res.status(401).json(newTokens).end();
-  //   console.log("Второй этап");
-  //   // next();
-  } else {
+    let newTokens = await refreshRefreshTokenDB(tokens.refreshToken);
+    res.status(401).json(newTokens).end();
+  
+    console.log("Второй этап");
+    // next();
+  } else { 
     console.log("Третий этап");
-    res.status(403).json({
-      error: true,
-    });
+    res.sendStatus(403)
   }
 });
 // ----------------------------------------------------------- прослойка для аутентификации----------------
@@ -281,6 +295,7 @@ app.get("/activities", async (req, res) => {
     where: {
       weekday_train: today,
     },
+    logging: false,
   });
 
   res.status(200).json(sport);
@@ -289,12 +304,13 @@ app.get("/activities", async (req, res) => {
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/add_activity", (req, res) => {
   let values = req.body;
-
+  let start_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.start_time_train).format("HH:mm");
+  let end_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.end_time_train).format("HH:mm");
   ActivityTable.create({
     type_of_training: values.type_of_training,
     occupancy_train: parseInt(values.occupancy_train),
-    start_time_train: dayjs(values.start_time_train).format("YYYY-MM-DD HH:mm"),
-    end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
+    start_time_train: start_time,
+    end_time_train: end_time,
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
   })
@@ -309,7 +325,8 @@ app.post("/add_activity", (req, res) => {
 // --------------------------------------------------------------удаление тренировки ---------------------------
 app.delete("/delete_activity", async (req, res) => {
   let values = req.body.training_id;
-
+  let delDate = req.body.date;
+ 
   await ActivityTable.destroy({
     where: {
       training_id: values,
@@ -324,6 +341,9 @@ app.delete("/delete_activity", async (req, res) => {
       // затем следует название поля и порядок сортировки
       ["start_time_train", "ASC"],
     ],
+    where: {
+      weekday_train: delDate || today,
+    },
   })
     .then((data) => {
       res.status(200).json(data);
@@ -334,6 +354,8 @@ app.delete("/delete_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 app.put("/update_activity", async (req, res) => {
   let values = req.body;
+
+  console.log(values, "<------------- edit");
   await ActivityTable.update(
     {
       type_of_training: values.type_of_training,
@@ -348,7 +370,7 @@ app.put("/update_activity", async (req, res) => {
         training_id: values.training_id,
       },
     }
-  ).catch((err) => console.log(err));
+  ).catch((err) => console.log("ediiiiiiiiit      --- ",err));
 
   await ActivityTable.findAll({
     raw: true,
@@ -357,6 +379,9 @@ app.put("/update_activity", async (req, res) => {
       // затем следует название поля и порядок сортировки
       ["start_time_train", "ASC"],
     ],
+    where: {
+      weekday_train: values.date || today,
+    },
   })
     .then((data) => {
       res.status(200).json(data);
@@ -366,32 +391,32 @@ app.put("/update_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
 // --------------------------------------------------------------создать тренировку ---------------------------
-app.post("/add_activity", (req, res) => {
-  let values = req.body;
+// app.post("/add_activity", (req, res) => {
+//   let values = req.body;
+//   console.log();
+//   ClientTable.create({
+//     client_phone_number: parseInt(values.client_phone_number),
+//     client_password: values.client_password,
+//     client_name: values.client_name,
+//     end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
+//     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
+//     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
+//   })
+//     .then((data) => {
+//       res.status(200).json(data);
+//     })
+//     .catch((err) => console.log(err));
 
-  ClientTable.create({
-    client_phone_number: parseInt(values.client_phone_number),
-    client_password: values.client_password,
-    client_name: values.client_name,
-    end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
-    //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
-    weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
-  })
-    .then((data) => {
-      res.status(200).json(data);
-    })
-    .catch((err) => console.log(err));
-
-  if (!req.body) return res.status(400).json("node node");
-});
+//   if (!req.body) return res.status(400).json("node node");
+// });
 // --------------------------------------------------------------создать тренировку ---------------------------
 
 // --------------------------------------------------------------отобразить тренировки по дате---------------------------
 app.post("/date_activity", async (req, res) => {
   let values = req.body;
   let dateSelect = dayjs(values.data);
+console.log(values);
 
-  console.log(dayjs.isDayjs(dateSelect));
   if (dayjs.isDayjs(dateSelect)) {
     const sport = await ActivityTable.findAll({
       raw: true,
@@ -414,7 +439,7 @@ app.post("/date_activity", async (req, res) => {
 
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
-  console.log("Сервер начал принимать запросы по адресу http://localhost:3000");
+  console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
 
 function generateAccessToken(user) {
@@ -446,7 +471,6 @@ function verifyAccessToken(token) {
     const decoded = jwt.verify(token, secret);
     return { success: true, data: decoded };
   } catch (error) {
-    console.log("fail verify");
     return { success: false, error: error.message };
   }
 }
@@ -463,6 +487,7 @@ function verifyRefreshToken(token) {
 }
 
 async function generateFreshforDB(user) {
+
   let freshKey = await generateRefreshToken(user.client_id);
 
   let newFresh = await ClientTable.update(
@@ -481,6 +506,7 @@ async function generateFreshforDB(user) {
 
   try {
     const freshDB = newFresh[1].dataValues.refresh_key_client;
+
     const userAccess = {
       token: generateAccessToken(user), 
       refreshToken: freshDB,
@@ -493,3 +519,44 @@ async function generateFreshforDB(user) {
   // return userAccess;
 }
 
+async function refreshRefreshTokenDB(reToken) {
+
+  let reId = await verifyRefreshToken(reToken).data.id;
+  let user = await findRefreshInDB(reId);
+
+
+  if (reToken === user.refresh_key_client) {
+    return await generateFreshforDB(user);
+  }
+}
+async function findRefreshDB(reToken) {
+  let reId = await verifyRefreshToken(reToken).data.id;
+  let user = await findRefreshInDB(reId);
+
+  if (user.refresh_key_client === reToken) {
+    console.log("токены совпали");
+  } else {
+    console.log("не совпали");
+  }
+  return user.refresh_key_client === reToken;
+}
+
+async function findRefreshInDB(id) {
+  let user;
+  let reTokenDB = await ClientTable.findOne({
+    raw: true,
+    where: { client_id: id },
+    logging: false,
+  });
+
+  try {
+    user = reTokenDB;
+  } catch (error) {
+    console.error("Error inserting data", error);
+    // return userAccess;
+  }
+
+
+// let user = results.rows[0];
+  return user;
+}
