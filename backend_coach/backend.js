@@ -18,6 +18,7 @@ const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize("coach_client", "ivan", "qwerty", {
   dialect: "postgres",
+  logging: false,
 });
 
 try {
@@ -29,7 +30,7 @@ try {
 
 var today = dayjs().format("YYYY-MM-DD");
 console.log(today, ",-----------------------todaaaaaay");
-
+let foreignId
 // const Coach_table = sequelize.define("coach_table", {
 //   coach_id: {
 //     type: Sequelize.UUID,
@@ -78,6 +79,7 @@ const ClientTable = sequelize.define("client_table", {
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true,
     allowNull: false,
+    unique:true
   },
   client_name: {
     type: Sequelize.STRING,
@@ -133,12 +135,7 @@ const ClientTable = sequelize.define("client_table", {
   client_messenger: {
     type: Sequelize.STRING,
   },
-  clientId: {
-    type: Sequelize.UUID,
-    defaultValue: Sequelize.UUIDV4,
- 
-    allowNull: false,
-  },
+
 });
 
 const ActivityTable = sequelize.define("activity_table", {
@@ -164,11 +161,18 @@ const ActivityTable = sequelize.define("activity_table", {
   end_time_train: {
     type: Sequelize.STRING,
   },
+  client_id: {
+    type: Sequelize.UUID,
+    references: {
+      model: 'client_tables',
+      key: 'client_id'
+    }
+  },
 });
 
 
-ClientTable.hasMany(ActivityTable)
-ActivityTable.belongsTo(ClientTable)
+ClientTable.hasMany(ActivityTable, {foreignKey:'client_id', onDelete: "CASCADE", onUpdate: "CASCADE"})
+
 
 sequelize
   .sync()
@@ -209,11 +213,10 @@ app.post("/signIn", async (req, res) => {
     async function (error, result) {
       if (result) {
         // авторизируем юзера
-
         const result = await generateFreshforDB(signIn2);
         console.log("вход выполнен");
         console.log(result);
-
+        result.user = signIn2.client_id
         res.status(200).json(result);
       } else {
         console.log(error);
@@ -241,7 +244,8 @@ app.post("/registration", async (req, res) => {
     client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
     client_job: values.client_job,
     client_illness: values.client_illness,
-    client_messenger: values.client_messenger.join() || "",
+    client_messenger: values.client_messenger.join() || "noMassengers",
+
   })
     .then((data) => {
       console.log(data, "<---------успех");
@@ -266,11 +270,15 @@ app.use(async function (req, res, next) {
  
 
   if (verifyAccessToken(tokens.token).success) {
+
+    foreignId=(verifyAccessToken(tokens.token).data).id;
+
     console.log("первый этап");
     next();
   } else if (await findRefreshDB(tokens.refreshToken)) {
 
     let newTokens = await refreshRefreshTokenDB(tokens.refreshToken);
+    newTokens.user = foreignId;
     res.status(401).json(newTokens).end();
   
     console.log("Второй этап");
@@ -306,6 +314,7 @@ app.post("/add_activity", (req, res) => {
   let values = req.body;
   let start_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.start_time_train).format("HH:mm");
   let end_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.end_time_train).format("HH:mm");
+
   ActivityTable.create({
     type_of_training: values.type_of_training,
     occupancy_train: parseInt(values.occupancy_train),
@@ -313,8 +322,11 @@ app.post("/add_activity", (req, res) => {
     end_time_train: end_time,
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
-  })
+    client_id: foreignId,
+  }
+)
     .then((data) => {
+
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -391,24 +403,24 @@ app.put("/update_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
 // --------------------------------------------------------------создать тренировку ---------------------------
-// app.post("/add_activity", (req, res) => {
-//   let values = req.body;
-//   console.log();
-//   ClientTable.create({
-//     client_phone_number: parseInt(values.client_phone_number),
-//     client_password: values.client_password,
-//     client_name: values.client_name,
-//     end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
-//     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
-//     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
-//   })
-//     .then((data) => {
-//       res.status(200).json(data);
-//     })
-//     .catch((err) => console.log(err));
+app.get("/logout", async (req, res) => {
+  console.log('Tut est cho?');
+  const logout = await ClientTable.update(
+    { refresh_key_client: 'logout' },
+    {
+      where: {
+        client_id: foreignId,
+      },
+    },
 
-//   if (!req.body) return res.status(400).json("node node");
-// });
+  ).then((data) => {
+    res.status(200).json("успех")
+  })
+  .catch((err) => console.log(err));
+
+
+  
+});
 // --------------------------------------------------------------создать тренировку ---------------------------
 
 // --------------------------------------------------------------отобразить тренировки по дате---------------------------
@@ -449,7 +461,7 @@ function generateAccessToken(user) {
   };
   // console.log(payload, '<--- в генерации   access');
   const secret = "ivan";
-  const options = { expiresIn: "10m" };
+  const options = { expiresIn: "5m" };
 
   return jwt.sign(payload, secret, options);
 }
@@ -524,7 +536,7 @@ async function refreshRefreshTokenDB(reToken) {
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
 
-
+console.log( user.refresh_key_client);
   if (reToken === user.refresh_key_client) {
     return await generateFreshforDB(user);
   }
@@ -532,7 +544,7 @@ async function refreshRefreshTokenDB(reToken) {
 async function findRefreshDB(reToken) {
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
-
+console.log( user, "530");
   if (user.refresh_key_client === reToken) {
     console.log("токены совпали");
   } else {
@@ -542,13 +554,14 @@ async function findRefreshDB(reToken) {
 }
 
 async function findRefreshInDB(id) {
+  console.log(id, "540");
   let user;
   let reTokenDB = await ClientTable.findOne({
     raw: true,
     where: { client_id: id },
     logging: false,
-  });
-
+  }).catch((err) => console.log("-------------------------find Refresh      --- ",err));
+  console.log(reTokenDB);
   try {
     user = reTokenDB;
   } catch (error) {
