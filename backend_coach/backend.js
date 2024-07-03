@@ -31,6 +31,7 @@ try {
 var today = dayjs().format("YYYY-MM-DD");
 console.log(today, ",-----------------------todaaaaaay");
 let foreignId
+let role
 // const Coach_table = sequelize.define("coach_table", {
 //   coach_id: {
 //     type: Sequelize.UUID,
@@ -57,8 +58,9 @@ let foreignId
 //     type: Sequelize.TEXT,
 //   },
 //   coach_phone_number: {
-//     type: Sequelize.INTEGER,
+//     type: Sequelize.STRING,
 //     allowNull: false,
+//     unique: true,
 //   },
 //   coach_birthday: {
 //     type: Sequelize.DATEONLY,
@@ -168,6 +170,7 @@ const ActivityTable = sequelize.define("activity_table", {
       key: 'client_id'
     }
   },
+
 });
 
 
@@ -217,6 +220,7 @@ app.post("/signIn", async (req, res) => {
         console.log("вход выполнен");
         console.log(result);
         result.user = signIn2.client_id
+        result.role = signIn2.client_role
         res.status(200).json(result);
       } else {
         console.log(error);
@@ -244,7 +248,7 @@ app.post("/registration", async (req, res) => {
     client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
     client_job: values.client_job,
     client_illness: values.client_illness,
-    client_messenger: values.client_messenger.join() || "noMassengers",
+    client_messenger: values.client_messenger.join() || "noMessengers",
 
   })
     .then((data) => {
@@ -272,6 +276,7 @@ app.use(async function (req, res, next) {
   if (verifyAccessToken(tokens.token).success) {
 
     foreignId=(verifyAccessToken(tokens.token).data).id;
+    role=(verifyAccessToken(tokens.token).data).role;
 
     console.log("первый этап");
     next();
@@ -305,7 +310,7 @@ app.get("/activities", async (req, res) => {
     },
     logging: false,
   });
-
+  addStatusTrain(sport)
   res.status(200).json(sport);
 });
 // --------------------------------------------------------------запрос тренировок ---------------------------
@@ -326,7 +331,7 @@ app.post("/add_activity", (req, res) => {
   }
 )
     .then((data) => {
-
+      console.log(data, "------------------------------create train");
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -402,7 +407,7 @@ app.put("/update_activity", async (req, res) => {
 });
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
-// --------------------------------------------------------------создать тренировку ---------------------------
+// --------------------------------------------------------------выход из аккаунта ---------------------------
 app.get("/logout", async (req, res) => {
   console.log('Tut est cho?');
   const logout = await ClientTable.update(
@@ -414,6 +419,7 @@ app.get("/logout", async (req, res) => {
     },
 
   ).then((data) => {
+    
     res.status(200).json("успех")
   })
   .catch((err) => console.log(err));
@@ -421,7 +427,7 @@ app.get("/logout", async (req, res) => {
 
   
 });
-// --------------------------------------------------------------создать тренировку ---------------------------
+// --------------------------------------------------------------выход из аккаунта ---------------------------
 
 // --------------------------------------------------------------отобразить тренировки по дате---------------------------
 app.post("/date_activity", async (req, res) => {
@@ -441,13 +447,81 @@ console.log(values);
         weekday_train: values.date,
       },
     });
+   
+    // sport.forEach(element => {
+    //   console.log(element);
+    //   let statusTrain = nowTime(element.start_time_train, element.end_time_train)
+    //   element.status_train = statusTrain
+    //   console.log(element);
+    // });
 
+    addStatusTrain(sport)
+    
     res.status(200).json(sport);
   } else {
     res.status(200).json(null);
   }
 });
 // --------------------------------------------------------------отобразить тренировки по дате ---------------------------
+
+
+// --------------------------------------------------------------запрос клиентов ---------------------------
+app.get("/client_list", async (req, res) => {
+
+  const clients = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+  });
+
+  console.log("---------------------------client-------------- ",clients, "<-----------------------clients -------------------");
+  res.status(200).json(clients);
+});
+// --------------------------------------------------------------запрос клиентов ----------------------
+// --------------------------------------------------------------сделать тренером ---------------------------
+app.post("/create_coach", async (req, res) => {
+  let values = req.body;
+  console.log(values);
+
+  const newRole = await ClientTable.update(
+    { client_role: 'coach' },
+    {
+      where: {
+        client_id: values.client_id,
+      },
+    },
+
+  ).then((data) => {
+    
+    res.status(200).json("успех")
+  })
+  .catch((err) => console.log(err));
+
+  // const nowCoach = await ClientTable.findOne({
+  //   raw: true,
+  //   where: {  client_id: values.client_id },
+  // });
+
+  // console.log(nowCoach, "Б------------- теперь трпненр-------------------------");
+
+  // Coach_table.create({
+  //   coach_phone_number: nowCoach.client_phone_number,
+  //   coach_name: nowCoach.client_name,
+  //   coach_patronymic: nowCoach.client_patronymic,
+  //   coach_surname: nowCoach.client_surname,
+  //   coach_password: nowCoach.client_password,
+  //   coach_email: nowCoach.client_email,
+  //   coach_birthday: dayjs(nowCoach.client_birthday).format("YYYY-MM-DD"),
+
+  // }).then((data) => {
+  //   console.log("тренер создан");
+  //   // res.status(200).json("успех")
+  // })
+  // .catch((err) => console.log(err));
+
+
+
+});
+// --------------------------------------------------------------сделать тренером  ---------------------------
 
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
@@ -458,6 +532,7 @@ function generateAccessToken(user) {
   const payload = {
     id: user.client_id,
     name: user.client_name,
+    role: user.client_role
   };
   // console.log(payload, '<--- в генерации   access');
   const secret = "ivan";
@@ -572,4 +647,27 @@ async function findRefreshInDB(id) {
 
 // let user = results.rows[0];
   return user;
+}
+
+
+function setStatusTrain(start, end) {
+  if (dayjs()>dayjs(end)) {
+    return "тренировка завершина"
+  } else if (dayjs()<dayjs(start)) {
+  return "тренировка запланирова"
+  } else {
+    return "тренировка в процессе"
+  }
+  
+}
+
+function addStatusTrain(trains){
+
+  trains.forEach(element => {
+
+    let statusTrain = setStatusTrain(element.start_time_train, element.end_time_train)
+    element.status_train = statusTrain
+   
+  });
+  
 }
