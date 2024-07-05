@@ -32,6 +32,7 @@ var today = dayjs().format("YYYY-MM-DD");
 console.log(today, ",-----------------------todaaaaaay");
 let foreignId
 let role
+let fio
 // const Coach_table = sequelize.define("coach_table", {
 //   coach_id: {
 //     type: Sequelize.UUID,
@@ -170,6 +171,10 @@ const ActivityTable = sequelize.define("activity_table", {
       key: 'client_id'
     }
   },
+  recorded_client: {
+    type: Sequelize.ARRAY(Sequelize.TEXT),
+    defaultValue: [],
+  },
 
 });
 
@@ -210,6 +215,8 @@ app.post("/signIn", async (req, res) => {
     where: { client_phone_number: values.phone_number },
   });
 
+
+
   bcrypt.compare(
     values.password,
     signIn2.client_password,
@@ -219,9 +226,19 @@ app.post("/signIn", async (req, res) => {
         const result = await generateFreshforDB(signIn2);
         console.log("вход выполнен");
         console.log(result);
-        result.user = signIn2.client_id
-        result.role = signIn2.client_role
-        res.status(200).json(result);
+        const userFio = {
+          role: signIn2.client_role,
+          user: signIn2.client_id,
+          fio: await createFIO(signIn2.client_id),
+        }
+        const userData = {
+          data: userFio,
+          tokens: result
+        }
+
+
+        console.log("-----------sign in -------------",userData, "-----------sign in -------------");
+        res.status(200).json(userData);
       } else {
         console.log(error);
         res.status(200).json("nooooooooooooo");
@@ -259,42 +276,6 @@ app.post("/registration", async (req, res) => {
 });
 // --------------------------------------------------------------регистрация---------------------------
 
-// ----------------------------------------------------------- прослойка для аутентификации----------------
-app.use(async function (req, res, next) {
-
-  let tokens =(JSON.parse((req.get("Authorization")).replace('Bearer ', '')));
-  // console.log(tokens, "<------Tut?");
-
-
-  if (!tokens) {
-
-    return res.status(404).end();
-  }
-
- 
-
-  if (verifyAccessToken(tokens.token).success) {
-
-    foreignId=(verifyAccessToken(tokens.token).data).id;
-    role=(verifyAccessToken(tokens.token).data).role;
-
-    console.log("первый этап");
-    next();
-  } else if (await findRefreshDB(tokens.refreshToken)) {
-
-    let newTokens = await refreshRefreshTokenDB(tokens.refreshToken);
-    newTokens.user = foreignId;
-    res.status(401).json(newTokens).end();
-  
-    console.log("Второй этап");
-    // next();
-  } else { 
-    console.log("Третий этап");
-    res.sendStatus(403)
-  }
-});
-// ----------------------------------------------------------- прослойка для аутентификации----------------
-
 // --------------------------------------------------------------запрос тренировок ---------------------------
 app.get("/activities", async (req, res) => {
 
@@ -313,7 +294,88 @@ app.get("/activities", async (req, res) => {
   addStatusTrain(sport)
   res.status(200).json(sport);
 });
-// --------------------------------------------------------------запрос тренировок ---------------------------
+// --------------------------------------------------------------запрос тренировок -----------------------
+// --------------------------------------------------------------отобразить тренировки по дате---------------------------
+app.post("/date_activity", async (req, res) => {
+  let values = req.body;
+  let dateSelect = dayjs(values.data);
+console.log(values);
+
+  if (dayjs.isDayjs(dateSelect)) {
+    const sport = await ActivityTable.findAll({
+      raw: true,
+      order: [
+        // массив для сортировки начинается с модели
+        // затем следует название поля и порядок сортировки
+        ["start_time_train", "ASC"],
+      ],
+      where: {
+        weekday_train: values.date,
+      },
+    });
+   
+    // sport.forEach(element => {
+    //   console.log(element);
+    //   let statusTrain = nowTime(element.start_time_train, element.end_time_train)
+    //   element.status_train = statusTrain
+    //   console.log(element);
+    // });
+
+    addStatusTrain(sport)
+    
+    res.status(200).json(sport);
+  } else {
+    res.status(200).json(null);
+  }
+});
+// --------------------------------------------------------------отобразить тренировки по дате ---------------------------
+
+// ----------------------------------------------------------- прослойка для аутентификации----------------
+app.use(async function (req, res, next) {
+
+  let tokens =(JSON.parse((req.get("Authorization")).replace('Bearer ', '')));
+  // console.log(tokens, "<------Tut?");
+
+
+  if (!tokens) {
+
+    return res.status(404).end();
+  }
+
+ 
+
+  if (verifyAccessToken(tokens.token).success) {
+
+    foreignId=(verifyAccessToken(tokens.token).data).id;
+    role=(verifyAccessToken(tokens.token).data).role;
+    fio = (verifyAccessToken(tokens.token).data).fio;
+    console.log("первый этап");
+    next();
+  } else if (await findRefreshDB(tokens.refreshToken)) {
+
+    let userValues = {
+      role: role,
+      user: foreignId,
+      fio: fio,
+    }
+    let userDataSend = {
+      tokens: await refreshRefreshTokenDB(tokens.refreshToken),
+      data: userValues
+    }
+
+    // console.log("-----------midle -------------", newTokens, "-----------midle -------------");
+    res.status(401).json(userDataSend).end();
+  
+    console.log("Второй этап");
+    // next();
+  } else { 
+    console.log("Третий этап");
+    res.sendStatus(403)
+  }
+});
+// ----------------------------------------------------------- прослойка для аутентификации----------------
+
+
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/add_activity", (req, res) => {
   let values = req.body;
@@ -429,40 +491,7 @@ app.get("/logout", async (req, res) => {
 });
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 
-// --------------------------------------------------------------отобразить тренировки по дате---------------------------
-app.post("/date_activity", async (req, res) => {
-  let values = req.body;
-  let dateSelect = dayjs(values.data);
-console.log(values);
 
-  if (dayjs.isDayjs(dateSelect)) {
-    const sport = await ActivityTable.findAll({
-      raw: true,
-      order: [
-        // массив для сортировки начинается с модели
-        // затем следует название поля и порядок сортировки
-        ["start_time_train", "ASC"],
-      ],
-      where: {
-        weekday_train: values.date,
-      },
-    });
-   
-    // sport.forEach(element => {
-    //   console.log(element);
-    //   let statusTrain = nowTime(element.start_time_train, element.end_time_train)
-    //   element.status_train = statusTrain
-    //   console.log(element);
-    // });
-
-    addStatusTrain(sport)
-    
-    res.status(200).json(sport);
-  } else {
-    res.status(200).json(null);
-  }
-});
-// --------------------------------------------------------------отобразить тренировки по дате ---------------------------
 
 
 // --------------------------------------------------------------запрос клиентов ---------------------------
@@ -522,6 +551,32 @@ app.post("/create_coach", async (req, res) => {
 
 });
 // --------------------------------------------------------------сделать тренером  ---------------------------
+
+// --------------------------------------------------------------запись на тренировку---------------------------
+app.post("/sign_up_train", async (req, res) => {
+  let values = req.body;
+  
+  const fio = await createFIO(foreignId)
+  console.log(fio);
+  const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`);
+ 
+
+});
+// --------------------------------------------------------------запись на тренировку ---------------------------
+// --------------------------------------------------------------отпись от тренировку---------------------------
+app.post("/unsign_up_train", async (req, res) => {
+  let values = req.body;
+  console.log("----------------------------------------unsign------------------------------",values,"--------------------------------------------------unsign---------------------------------------");
+  const fio = await createFIO(foreignId)
+  let index = values.recorded_client
+  console.log(index.indexOf(fio))
+  console.log(fio);
+  const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`);
+ 
+
+});
+// --------------------------------------------------------------отпись от тренировку ---------------------------
+
 
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
@@ -671,3 +726,13 @@ function addStatusTrain(trains){
   });
   
 }
+
+ async function createFIO  (id) {
+  const user = await ClientTable.findOne({
+    raw: true,
+    where: { client_id: id },
+  });
+  let fio = (`${user.client_name} ${user.client_patronymic ?? ""} ${user.client_surname}`).trim()
+  fio = fio.replace(/ +/g, ' ').trim();
+  return fio;
+ }
