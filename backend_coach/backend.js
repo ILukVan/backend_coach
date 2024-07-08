@@ -29,7 +29,8 @@ try {
 }
 
 var today = dayjs().format("YYYY-MM-DD");
-console.log(today, ",-----------------------todaaaaaay");
+
+
 let foreignId
 let role
 let fio
@@ -155,6 +156,9 @@ const ActivityTable = sequelize.define("activity_table", {
   occupancy_train: {
     type: Sequelize.INTEGER,
   },
+  description_of_train: {
+    type: Sequelize.TEXT,
+  },
   weekday_train: {
     type: Sequelize.DATEONLY,
   },
@@ -179,7 +183,32 @@ const ActivityTable = sequelize.define("activity_table", {
 });
 
 
+const ActivityTypesTable = sequelize.define("activity_type_table", {
+  workout_id: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  type_of_workout: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  description_of_workout: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  client_id: {
+    type: Sequelize.UUID,
+    references: {
+      model: 'client_tables',
+      key: 'client_id'
+    }
+  },
+})
+
 ClientTable.hasMany(ActivityTable, {foreignKey:'client_id', onDelete: "CASCADE", onUpdate: "CASCADE"})
+ClientTable.hasMany(ActivityTypesTable, {foreignKey:'client_id', onDelete: "CASCADE", onUpdate: "CASCADE"})
 
 
 sequelize
@@ -192,7 +221,6 @@ sequelize
 // --------------------------------------------------------------регистрация или вход---------------------------
 app.post("/SignInOrRegistration", async (req, res) => {
   let values = req.body;
-  console.log(values);
 
   const signIn = await ClientTable.findOne({
     raw: true,
@@ -225,7 +253,7 @@ app.post("/signIn", async (req, res) => {
         // авторизируем юзера
         const result = await generateFreshforDB(signIn2);
         console.log("вход выполнен");
-        console.log(result);
+
         const userFio = {
           role: signIn2.client_role,
           user: signIn2.client_id,
@@ -236,8 +264,6 @@ app.post("/signIn", async (req, res) => {
           tokens: result
         }
 
-
-        console.log("-----------sign in -------------",userData, "-----------sign in -------------");
         res.status(200).json(userData);
       } else {
         console.log(error);
@@ -250,11 +276,7 @@ app.post("/signIn", async (req, res) => {
 // -------------------------------------------------------------- регистрация---------------------------
 app.post("/registration", async (req, res) => {
   let values = req.body;
-  console.log(values);
-  console.log(
-    dayjs(values.client_birthday).format("YYYY-MM-DD"),
-    "<------------------------------------------------------date B"
-  );
+
   ClientTable.create({
     client_phone_number: values.phone_number,
     client_password: bcrypt.hashSync(values.client_password, salt),
@@ -269,7 +291,7 @@ app.post("/registration", async (req, res) => {
 
   })
     .then((data) => {
-      console.log(data, "<---------успех");
+
       res.status(200).json("успех");
     })
     .catch((err) => res.send(406).json("неуспех"));
@@ -299,7 +321,7 @@ app.get("/activities", async (req, res) => {
 app.post("/date_activity", async (req, res) => {
   let values = req.body;
   let dateSelect = dayjs(values.data);
-console.log(values);
+
 
   if (dayjs.isDayjs(dateSelect)) {
     const sport = await ActivityTable.findAll({
@@ -314,13 +336,6 @@ console.log(values);
       },
     });
    
-    // sport.forEach(element => {
-    //   console.log(element);
-    //   let statusTrain = nowTime(element.start_time_train, element.end_time_train)
-    //   element.status_train = statusTrain
-    //   console.log(element);
-    // });
-
     addStatusTrain(sport)
     
     res.status(200).json(sport);
@@ -334,7 +349,6 @@ console.log(values);
 app.use(async function (req, res, next) {
 
   let tokens =(JSON.parse((req.get("Authorization")).replace('Bearer ', '')));
-  // console.log(tokens, "<------Tut?");
 
 
   if (!tokens) {
@@ -342,28 +356,35 @@ app.use(async function (req, res, next) {
     return res.status(404).end();
   }
 
+
  
 
   if (verifyAccessToken(tokens.token).success) {
 
-    foreignId=(verifyAccessToken(tokens.token).data).id;
-    role=(verifyAccessToken(tokens.token).data).role;
-    fio = (verifyAccessToken(tokens.token).data).fio;
+
     console.log("первый этап");
     next();
   } else if (await findRefreshDB(tokens.refreshToken)) {
+    let userId = await verifyRefreshToken(tokens.refreshToken).data.id
+
+    const userDB = await ClientTable.findOne({
+      raw: true,
+      where: { client_id: userId },
+      logging: false,
+    }).catch((err) => console.log(" ",err));
+
 
     let userValues = {
-      role: role,
-      user: foreignId,
-      fio: fio,
+      role: userDB.client_role,
+      user: userDB.client_id,
+      fio: await createFIO(userDB.client_id),
     }
     let userDataSend = {
       tokens: await refreshRefreshTokenDB(tokens.refreshToken),
       data: userValues
     }
+   
 
-    // console.log("-----------midle -------------", newTokens, "-----------midle -------------");
     res.status(401).json(userDataSend).end();
   
     console.log("Второй этап");
@@ -377,23 +398,33 @@ app.use(async function (req, res, next) {
 
 
 // --------------------------------------------------------------создать тренировку ---------------------------
-app.post("/add_activity", (req, res) => {
+app.post("/add_activity", async (req, res) => {
   let values = req.body;
+  console.log(values);
   let start_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.start_time_train).format("HH:mm");
   let end_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.end_time_train).format("HH:mm");
+
+  const description = await ActivityTypesTable.findOne({
+    raw: true,
+    where: { type_of_workout: values.type_of_training },
+    logging: false,
+  }).catch((err) => console.log("-------------------------find Refresh      --- ",err));
+
+  console.log(description);
 
   ActivityTable.create({
     type_of_training: values.type_of_training,
     occupancy_train: parseInt(values.occupancy_train),
     start_time_train: start_time,
     end_time_train: end_time,
+    description_of_train: description.description_of_workout,
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
     client_id: foreignId,
   }
 )
     .then((data) => {
-      console.log(data, "------------------------------create train");
+
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -434,7 +465,7 @@ app.delete("/delete_activity", async (req, res) => {
 app.put("/update_activity", async (req, res) => {
   let values = req.body;
 
-  console.log(values, "<------------- edit");
+
   await ActivityTable.update(
     {
       type_of_training: values.type_of_training,
@@ -472,11 +503,16 @@ app.put("/update_activity", async (req, res) => {
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 app.get("/logout", async (req, res) => {
   console.log('Tut est cho?');
+  let tokens =(JSON.parse((req.get("Authorization")).replace('Bearer ', '')));
+
+  const user = await verifyRefreshToken(tokens.refreshToken).data
+
+  
   const logout = await ClientTable.update(
     { refresh_key_client: 'logout' },
     {
       where: {
-        client_id: foreignId,
+        client_id: user.id,
       },
     },
 
@@ -500,16 +536,30 @@ app.get("/client_list", async (req, res) => {
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
+    where: { client_role: "client"}
   });
 
-  console.log("---------------------------client-------------- ",clients, "<-----------------------clients -------------------");
+  
   res.status(200).json(clients);
 });
 // --------------------------------------------------------------запрос клиентов ----------------------
+// --------------------------------------------------------------запрос тренеров ---------------------------
+app.get("/coach_list", async (req, res) => {
+
+  const coaches = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    where: { client_role: "coach"}
+  });
+
+  
+  res.status(200).json(coaches);
+});
+// --------------------------------------------------------------запрос тренеров ----------------------
 // --------------------------------------------------------------сделать тренером ---------------------------
 app.post("/create_coach", async (req, res) => {
   let values = req.body;
-  console.log(values);
+
 
   const newRole = await ClientTable.update(
     { client_role: 'coach' },
@@ -519,45 +569,51 @@ app.post("/create_coach", async (req, res) => {
       },
     },
 
-  ).then((data) => {
-    
-    res.status(200).json("успех")
+  ).catch((err) => console.log(err));
+
+  const clients = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    where: { client_role: "client"}
+  }).then((data) => {
+    res.status(200).json(data)
   })
   .catch((err) => console.log(err));
-
-  // const nowCoach = await ClientTable.findOne({
-  //   raw: true,
-  //   where: {  client_id: values.client_id },
-  // });
-
-  // console.log(nowCoach, "Б------------- теперь трпненр-------------------------");
-
-  // Coach_table.create({
-  //   coach_phone_number: nowCoach.client_phone_number,
-  //   coach_name: nowCoach.client_name,
-  //   coach_patronymic: nowCoach.client_patronymic,
-  //   coach_surname: nowCoach.client_surname,
-  //   coach_password: nowCoach.client_password,
-  //   coach_email: nowCoach.client_email,
-  //   coach_birthday: dayjs(nowCoach.client_birthday).format("YYYY-MM-DD"),
-
-  // }).then((data) => {
-  //   console.log("тренер создан");
-  //   // res.status(200).json("успех")
-  // })
-  // .catch((err) => console.log(err));
-
 
 
 });
 // --------------------------------------------------------------сделать тренером  ---------------------------
+// --------------------------------------------------------------удаление тренера ---------------------------
+app.delete("/delete_coach", async (req, res) => {
+  let value = req.body.id
+
+
+  await ClientTable.destroy({
+    where: {
+      client_id: value,
+    },
+    individualHooks: true,
+  }).catch((err) => console.log(err));
+
+  await ClientTable.findAll({
+    raw: true,
+    where: {
+      client_role: "coach",
+    },
+  })
+    .then((data) => {
+      res.status(200).json(data);
+    })
+    .catch((err) => console.log(err));
+});
+// --------------------------------------------------------------удаление тренера ---------------------
 
 // --------------------------------------------------------------запись на тренировку---------------------------
 app.post("/sign_up_train", async (req, res) => {
   let values = req.body;
   
   const fio = await createFIO(foreignId)
-  console.log(fio);
+
   const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`);
  
 
@@ -566,16 +622,45 @@ app.post("/sign_up_train", async (req, res) => {
 // --------------------------------------------------------------отпись от тренировку---------------------------
 app.post("/unsign_up_train", async (req, res) => {
   let values = req.body;
-  console.log("----------------------------------------unsign------------------------------",values,"--------------------------------------------------unsign---------------------------------------");
+ 
   const fio = await createFIO(foreignId)
   let index = values.recorded_client
-  console.log(index.indexOf(fio))
-  console.log(fio);
+
   const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`);
  
 
 });
 // --------------------------------------------------------------отпись от тренировку ---------------------------
+// --------------------------------------------------------------запрос клиентов ---------------------------
+app.get("/workout_list", async (req, res) => {
+
+  const workout = await ActivityTypesTable.findAll({
+    raw: true,
+    logging: false,
+  });
+  
+  res.status(200).json(workout);
+});
+// --------------------------------------------------------------запрос клиентов ----------------------
+// --------------------------------------------------------------создать тренировку ---------------------------
+app.post("/add_workout", (req, res) => {
+  let values = req.body;
+  console.log(values);
+ 
+
+  ActivityTypesTable.create({
+    type_of_workout: values.type_of_workout,
+    description_of_workout: values.description_of_workout,
+    client_id: foreignId,
+  }).then((data) => {
+
+      res.status(200).json(data);
+    })
+    .catch((err) => console.log(err));
+
+  if (!req.body) return res.status(400).json("node node");
+});
+// --------------------------------------------------------------создать тренировку ---------------------------
 
 
 // начинаем прослушивание подключений на 3000 порту
@@ -589,9 +674,9 @@ function generateAccessToken(user) {
     name: user.client_name,
     role: user.client_role
   };
-  // console.log(payload, '<--- в генерации   access');
+
   const secret = "ivan";
-  const options = { expiresIn: "5m" };
+  const options = { expiresIn: "10s" };
 
   return jwt.sign(payload, secret, options);
 }
@@ -607,6 +692,7 @@ function generateRefreshToken(value) {
 }
 
 function verifyAccessToken(token) {
+  console.log();
   const secret = "ivan";
 
   try {
@@ -666,15 +752,16 @@ async function refreshRefreshTokenDB(reToken) {
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
 
-console.log( user.refresh_key_client);
+
   if (reToken === user.refresh_key_client) {
     return await generateFreshforDB(user);
   }
 }
 async function findRefreshDB(reToken) {
+  console.log(reToken);
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
-console.log( user, "530");
+
   if (user.refresh_key_client === reToken) {
     console.log("токены совпали");
   } else {
@@ -684,14 +771,14 @@ console.log( user, "530");
 }
 
 async function findRefreshInDB(id) {
-  console.log(id, "540");
+
   let user;
   let reTokenDB = await ClientTable.findOne({
     raw: true,
     where: { client_id: id },
     logging: false,
   }).catch((err) => console.log("-------------------------find Refresh      --- ",err));
-  console.log(reTokenDB);
+
   try {
     user = reTokenDB;
   } catch (error) {
@@ -732,7 +819,7 @@ function addStatusTrain(trains){
     raw: true,
     where: { client_id: id },
   });
-  let fio = (`${user.client_name} ${user.client_patronymic ?? ""} ${user.client_surname}`).trim()
-  fio = fio.replace(/ +/g, ' ').trim();
+  let fioFunc = (`${user.client_name} ${user.client_patronymic ?? ""} ${user.client_surname}`).trim()
+  fio = fioFunc.replace(/ +/g, ' ').trim();
   return fio;
  }
