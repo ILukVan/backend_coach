@@ -32,8 +32,7 @@ var today = dayjs().format("YYYY-MM-DD");
 
 
 let foreignId
-let role
-let fio
+
 // const Coach_table = sequelize.define("coach_table", {
 //   coach_id: {
 //     type: Sequelize.UUID,
@@ -254,20 +253,11 @@ app.post("/signIn", async (req, res) => {
         const result = await generateFreshforDB(signIn2);
         console.log("вход выполнен");
 
-        const userFio = {
-          role: signIn2.client_role,
-          user: signIn2.client_id,
-          fio: await createFIO(signIn2.client_id),
-        }
-        const userData = {
-          data: userFio,
-          tokens: result
-        }
 
-        res.status(200).json(userData);
+        res.status(200).json(result);
       } else {
         console.log(error);
-        res.status(200).json("nooooooooooooo");
+        res.status(403).json("Неверный пароль");
       }
     }
   );
@@ -290,11 +280,18 @@ app.post("/registration", async (req, res) => {
     client_messenger: values.client_messenger.join() || "noMessengers",
 
   })
-    .then((data) => {
-
-      res.status(200).json("успех");
+    .then( async (data) => {
+      console.log("Регистрация успешна");
+      const user = data.dataValues;
+      const result =await generateFreshforDB(user)
+      res.status(200).json(result);
     })
-    .catch((err) => res.send(406).json("неуспех"));
+    .catch((err) => {
+      
+      console.log("----------------------Ошибка регистарции------------------------------- ");
+      console.log(err);
+      res.status(406).json("Ошибка регистрарции")
+    })
 });
 // --------------------------------------------------------------регистрация---------------------------
 
@@ -361,31 +358,14 @@ app.use(async function (req, res, next) {
 
   if (verifyAccessToken(tokens.token).success) {
 
-
+    foreignId = verifyAccessToken(tokens.token).data.id
     console.log("первый этап");
     next();
   } else if (await findRefreshDB(tokens.refreshToken)) {
-    let userId = await verifyRefreshToken(tokens.refreshToken).data.id
-
-    const userDB = await ClientTable.findOne({
-      raw: true,
-      where: { client_id: userId },
-      logging: false,
-    }).catch((err) => console.log(" ",err));
+     const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken);
 
 
-    let userValues = {
-      role: userDB.client_role,
-      user: userDB.client_id,
-      fio: await createFIO(userDB.client_id),
-    }
-    let userDataSend = {
-      tokens: await refreshRefreshTokenDB(tokens.refreshToken),
-      data: userValues
-    }
-   
-
-    res.status(401).json(userDataSend).end();
+    res.status(401).json(tokensSend).end();
   
     console.log("Второй этап");
     // next();
@@ -631,7 +611,21 @@ app.post("/unsign_up_train", async (req, res) => {
 
 });
 // --------------------------------------------------------------отпись от тренировку ---------------------------
-// --------------------------------------------------------------запрос клиентов ---------------------------
+// --------------------------------------------------------------тренер записывает на тренировку---------------------------
+app.post("/sign_up_train_coach", async (req, res) => {
+  let values = req.body;
+  
+
+  let users = values.users
+  console.log(users);
+
+
+  const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_cat(recorded_client, '${users}') WHERE training_id = '${values.training_id}'`);
+ 
+
+});
+// --------------------------------------------------------------отпись от тренировку ---------------------------
+// --------------------------------------------------------------запрос типов тренировки ---------------------------
 app.get("/workout_list", async (req, res) => {
 
   const workout = await ActivityTypesTable.findAll({
@@ -641,7 +635,7 @@ app.get("/workout_list", async (req, res) => {
   
   res.status(200).json(workout);
 });
-// --------------------------------------------------------------запрос клиентов ----------------------
+// --------------------------------------------------------------запрос типов тренировки ----------------------
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/add_workout", (req, res) => {
   let values = req.body;
@@ -668,13 +662,14 @@ app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
 
-function generateAccessToken(user) {
+async function generateAccessToken (user) {
   const payload = {
     id: user.client_id,
-    name: user.client_name,
+    name: await createFIO(user.client_id),
     role: user.client_role
   };
 
+  console.log(payload);
   const secret = "ivan";
   const options = { expiresIn: "10s" };
 
@@ -716,6 +711,7 @@ function verifyRefreshToken(token) {
 
 async function generateFreshforDB(user) {
 
+
   let freshKey = await generateRefreshToken(user.client_id);
 
   let newFresh = await ClientTable.update(
@@ -736,9 +732,10 @@ async function generateFreshforDB(user) {
     const freshDB = newFresh[1].dataValues.refresh_key_client;
 
     const userAccess = {
-      token: generateAccessToken(user), 
+      token: await generateAccessToken(user), 
       refreshToken: freshDB,
     }
+
     return userAccess;
   } catch (error) {
     console.error("Error inserting data", error);
@@ -819,7 +816,7 @@ function addStatusTrain(trains){
     raw: true,
     where: { client_id: id },
   });
-  let fioFunc = (`${user.client_name} ${user.client_patronymic ?? ""} ${user.client_surname}`).trim()
-  fio = fioFunc.replace(/ +/g, ' ').trim();
+  const fioFunc = (`${user.client_name} ${user.client_patronymic ?? ""} ${user.client_surname}`).trim()
+  const fio = fioFunc.replace(/ +/g, ' ').trim();
   return fio;
  }
