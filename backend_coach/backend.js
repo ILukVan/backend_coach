@@ -30,8 +30,7 @@ try {
 
 var today = dayjs().format("YYYY-MM-DD");
 
-
-let foreignId
+let foreignId;
 
 // const Coach_table = sequelize.define("coach_table", {
 //   coach_id: {
@@ -82,7 +81,7 @@ const ClientTable = sequelize.define("client_table", {
     defaultValue: Sequelize.UUIDV4,
     primaryKey: true,
     allowNull: false,
-    unique:true
+    unique: true,
   },
   client_name: {
     type: Sequelize.STRING,
@@ -92,6 +91,10 @@ const ClientTable = sequelize.define("client_table", {
     type: Sequelize.STRING,
   },
   client_surname: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  client_fio: {
     type: Sequelize.STRING,
     allowNull: false,
   },
@@ -138,7 +141,6 @@ const ClientTable = sequelize.define("client_table", {
   client_messenger: {
     type: Sequelize.STRING,
   },
-
 });
 
 const ActivityTable = sequelize.define("activity_table", {
@@ -170,17 +172,15 @@ const ActivityTable = sequelize.define("activity_table", {
   client_id: {
     type: Sequelize.UUID,
     references: {
-      model: 'client_tables',
-      key: 'client_id'
-    }
+      model: "client_tables",
+      key: "client_id",
+    },
   },
   recorded_client: {
     type: Sequelize.ARRAY(Sequelize.TEXT),
     defaultValue: [],
   },
-
 });
-
 
 const ActivityTypesTable = sequelize.define("activity_type_table", {
   workout_id: {
@@ -200,15 +200,22 @@ const ActivityTypesTable = sequelize.define("activity_type_table", {
   client_id: {
     type: Sequelize.UUID,
     references: {
-      model: 'client_tables',
-      key: 'client_id'
-    }
+      model: "client_tables",
+      key: "client_id",
+    },
   },
-})
+});
 
-ClientTable.hasMany(ActivityTable, {foreignKey:'client_id', onDelete: "CASCADE", onUpdate: "CASCADE"})
-ClientTable.hasMany(ActivityTypesTable, {foreignKey:'client_id', onDelete: "CASCADE", onUpdate: "CASCADE"})
-
+ClientTable.hasMany(ActivityTable, {
+  foreignKey: "client_id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ClientTable.hasMany(ActivityTypesTable, {
+  foreignKey: "client_id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
 
 sequelize
   .sync()
@@ -242,8 +249,6 @@ app.post("/signIn", async (req, res) => {
     where: { client_phone_number: values.phone_number },
   });
 
-
-
   bcrypt.compare(
     values.password,
     signIn2.client_password,
@@ -252,7 +257,6 @@ app.post("/signIn", async (req, res) => {
         // авторизируем юзера
         const result = await generateFreshforDB(signIn2);
         console.log("вход выполнен");
-
 
         res.status(200).json(result);
       } else {
@@ -267,37 +271,45 @@ app.post("/signIn", async (req, res) => {
 app.post("/registration", async (req, res) => {
   let values = req.body;
 
+  const fioDB =
+    values.client_surname +
+    " " +
+    values.client_name +
+    (values.client_patronymic !== undefined
+      ? " " + values.client_patronymic
+      : "");
+  console.log(fioDB);
   ClientTable.create({
     client_phone_number: values.phone_number,
     client_password: bcrypt.hashSync(values.client_password, salt),
     client_name: values.client_name,
     client_patronymic: values.client_patronymic,
     client_surname: values.client_surname,
+    client_fio: fioDB,
     client_email: values.client_email,
     client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
     client_job: values.client_job,
     client_illness: values.client_illness,
     client_messenger: values.client_messenger.join() || "noMessengers",
-
   })
-    .then( async (data) => {
+    .then(async (data) => {
       console.log("Регистрация успешна");
       const user = data.dataValues;
-      const result =await generateFreshforDB(user)
+      const result = await generateFreshforDB(user);
       res.status(200).json(result);
     })
     .catch((err) => {
-      
-      console.log("----------------------Ошибка регистарции------------------------------- ");
+      console.log(
+        "----------------------Ошибка регистарции------------------------------- "
+      );
       console.log(err);
-      res.status(406).json("Ошибка регистрарции")
-    })
+      res.status(406).json("Ошибка регистрарции");
+    });
 });
 // --------------------------------------------------------------регистрация---------------------------
 
 // --------------------------------------------------------------запрос тренировок ---------------------------
 app.get("/activities", async (req, res) => {
-
   const sport = await ActivityTable.findAll({
     raw: true,
     order: [
@@ -310,7 +322,7 @@ app.get("/activities", async (req, res) => {
     },
     logging: false,
   });
-  addStatusTrain(sport)
+  addStatusTrain(sport);
   res.status(200).json(sport);
 });
 // --------------------------------------------------------------запрос тренировок -----------------------
@@ -318,7 +330,6 @@ app.get("/activities", async (req, res) => {
 app.post("/date_activity", async (req, res) => {
   let values = req.body;
   let dateSelect = dayjs(values.data);
-
 
   if (dayjs.isDayjs(dateSelect)) {
     const sport = await ActivityTable.findAll({
@@ -332,9 +343,9 @@ app.post("/date_activity", async (req, res) => {
         weekday_train: values.date,
       },
     });
-   
-    addStatusTrain(sport)
-    
+
+    addStatusTrain(sport);
+
     res.status(200).json(sport);
   } else {
     res.status(200).json(null);
@@ -344,51 +355,50 @@ app.post("/date_activity", async (req, res) => {
 
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
-
-  let tokens =(JSON.parse((req.get("Authorization")).replace('Bearer ', '')));
-
+  let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
   if (!tokens) {
-
     return res.status(404).end();
   }
 
-
- 
-
   if (verifyAccessToken(tokens.token).success) {
-
-    foreignId = verifyAccessToken(tokens.token).data.id
+    foreignId = verifyAccessToken(tokens.token).data.id;
     console.log("первый этап");
     next();
   } else if (await findRefreshDB(tokens.refreshToken)) {
-     const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken);
-
+    const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken);
 
     res.status(401).json(tokensSend).end();
-  
+
     console.log("Второй этап");
     // next();
-  } else { 
+  } else {
     console.log("Третий этап");
-    res.sendStatus(403)
+    res.sendStatus(403);
   }
 });
 // ----------------------------------------------------------- прослойка для аутентификации----------------
-
 
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/add_activity", async (req, res) => {
   let values = req.body;
   console.log(values);
-  let start_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.start_time_train).format("HH:mm");
-  let end_time = dayjs(values.weekday_train).format("YYYY-MM-DD") + " " + dayjs(values.end_time_train).format("HH:mm");
+  let start_time =
+    dayjs(values.weekday_train).format("YYYY-MM-DD") +
+    " " +
+    dayjs(values.start_time_train).format("HH:mm");
+  let end_time =
+    dayjs(values.weekday_train).format("YYYY-MM-DD") +
+    " " +
+    dayjs(values.end_time_train).format("HH:mm");
 
   const description = await ActivityTypesTable.findOne({
     raw: true,
     where: { type_of_workout: values.type_of_training },
     logging: false,
-  }).catch((err) => console.log("-------------------------find Refresh      --- ",err));
+  }).catch((err) =>
+    console.log("-------------------------find Refresh      --- ", err)
+  );
 
   console.log(description);
 
@@ -401,10 +411,8 @@ app.post("/add_activity", async (req, res) => {
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
     client_id: foreignId,
-  }
-)
+  })
     .then((data) => {
-
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -416,7 +424,7 @@ app.post("/add_activity", async (req, res) => {
 app.delete("/delete_activity", async (req, res) => {
   let values = req.body.training_id;
   let delDate = req.body.date;
- 
+
   await ActivityTable.destroy({
     where: {
       training_id: values,
@@ -444,8 +452,7 @@ app.delete("/delete_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 app.put("/update_activity", async (req, res) => {
   let values = req.body;
-
-
+  console.log(values);
   await ActivityTable.update(
     {
       type_of_training: values.type_of_training,
@@ -454,13 +461,14 @@ app.put("/update_activity", async (req, res) => {
         "YYYY-MM-DD HH:mm"
       ),
       end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
+      description_of_train: values.description,
     },
     {
       where: {
         training_id: values.training_id,
       },
     }
-  ).catch((err) => console.log("ediiiiiiiiit      --- ",err));
+  ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
 
   await ActivityTable.findAll({
     raw: true,
@@ -482,57 +490,45 @@ app.put("/update_activity", async (req, res) => {
 
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 app.get("/logout", async (req, res) => {
-  console.log('Tut est cho?');
-  let tokens =(JSON.parse((req.get("Authorization")).replace('Bearer ', '')));
+  console.log("Tut est cho?");
+  let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
-  const user = await verifyRefreshToken(tokens.refreshToken).data
+  const user = await verifyRefreshToken(tokens.refreshToken).data;
 
-  
   const logout = await ClientTable.update(
-    { refresh_key_client: 'logout' },
+    { refresh_key_client: "logout" },
     {
       where: {
         client_id: user.id,
       },
-    },
-
-  ).then((data) => {
-    
-    res.status(200).json("успех")
-  })
-  .catch((err) => console.log(err));
-
-
-  
+    }
+  )
+    .then((data) => {
+      res.status(200).json("успех");
+    })
+    .catch((err) => console.log(err));
 });
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 
-
-
-
 // --------------------------------------------------------------запрос клиентов ---------------------------
 app.get("/client_list", async (req, res) => {
-
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
-    where: { client_role: "client"}
+    where: { client_role: "client" },
   });
 
-  
   res.status(200).json(clients);
 });
 // --------------------------------------------------------------запрос клиентов ----------------------
 // --------------------------------------------------------------запрос тренеров ---------------------------
 app.get("/coach_list", async (req, res) => {
-
   const coaches = await ClientTable.findAll({
     raw: true,
     logging: false,
-    where: { client_role: "coach"}
+    where: { client_role: "coach" },
   });
 
-  
   res.status(200).json(coaches);
 });
 // --------------------------------------------------------------запрос тренеров ----------------------
@@ -540,33 +536,29 @@ app.get("/coach_list", async (req, res) => {
 app.post("/create_coach", async (req, res) => {
   let values = req.body;
 
-
   const newRole = await ClientTable.update(
-    { client_role: 'coach' },
+    { client_role: "coach" },
     {
       where: {
         client_id: values.client_id,
       },
-    },
-
+    }
   ).catch((err) => console.log(err));
 
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
-    where: { client_role: "client"}
-  }).then((data) => {
-    res.status(200).json(data)
+    where: { client_role: "client" },
   })
-  .catch((err) => console.log(err));
-
-
+    .then((data) => {
+      res.status(200).json(data);
+    })
+    .catch((err) => console.log(err));
 });
 // --------------------------------------------------------------сделать тренером  ---------------------------
 // --------------------------------------------------------------удаление тренера ---------------------------
 app.delete("/delete_coach", async (req, res) => {
-  let value = req.body.id
-
+  let value = req.body.id;
 
   await ClientTable.destroy({
     where: {
@@ -591,48 +583,68 @@ app.delete("/delete_coach", async (req, res) => {
 // --------------------------------------------------------------запись на тренировку---------------------------
 app.post("/sign_up_train", async (req, res) => {
   let values = req.body;
-  
-  const fio = await createFIO(foreignId)
 
-  const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`);
- 
+  const fio = await createFIO(foreignId);
 
+  const result = await sequelize.query(
+    `UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`
+  );
 });
 // --------------------------------------------------------------запись на тренировку ---------------------------
-// --------------------------------------------------------------отпись от тренировку---------------------------
+// --------------------------------------------------------------отпись от тренировки---------------------------
 app.post("/unsign_up_train", async (req, res) => {
   let values = req.body;
- 
-  const fio = await createFIO(foreignId)
-  let index = values.recorded_client
 
-  const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`);
- 
+  const fio = await createFIO(foreignId);
+  let index = values.recorded_client;
 
+  const result = await sequelize.query(
+    `UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`
+  );
 });
-// --------------------------------------------------------------отпись от тренировку ---------------------------
-// --------------------------------------------------------------тренер записывает на тренировку---------------------------
+// --------------------------------------------------------------отпись от тренировки ---------------------------
+// --------------------------------------------------------------запрос клиентов для записи---------------------------
+app.post("/client_list_for_coach", async (req, res) => {
+  const value = req.body.training_id
+  console.log(value);
+  const list = await makeDifferente(value)
+
+  res.status(200).json(list);
+});
+// --------------------------------------------------------------запрос клиентов для записи ----------------------
+// --------------------------------------------------------------тренер записывает на тренировку  клиента--------------------------
 app.post("/sign_up_train_coach", async (req, res) => {
   let values = req.body;
-  
+  const client = values.client.trim();
 
-  let users = values.users
-  console.log(users);
+  const result = await sequelize.query(
+    `UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${client}') WHERE training_id = '${values.training_id}'`
+  );
 
+  const list = await makeDifferente(values.training_id)
 
-  const result = await sequelize.query(`UPDATE activity_tables SET recorded_client = array_cat(recorded_client, '${users}') WHERE training_id = '${values.training_id}'`);
- 
-
+  res.status(200).json(list);
 });
-// --------------------------------------------------------------отпись от тренировку ---------------------------
+// --------------------------------------------------------------тренер записывает на тренировку  клиента---------------------------
+// --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
+app.post("/unsign_up_train_coach", async (req, res) => {
+  let values = req.body;
+
+  const result = await sequelize.query(
+    `UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${values.client}') WHERE training_id = '${values.training_id}'`
+  );
+  const list = await makeDifferente(values.training_id)
+
+  res.status(200).json(list);
+});
+// --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
 // --------------------------------------------------------------запрос типов тренировки ---------------------------
 app.get("/workout_list", async (req, res) => {
-
   const workout = await ActivityTypesTable.findAll({
     raw: true,
     logging: false,
   });
-  
+
   res.status(200).json(workout);
 });
 // --------------------------------------------------------------запрос типов тренировки ----------------------
@@ -640,14 +652,13 @@ app.get("/workout_list", async (req, res) => {
 app.post("/add_workout", (req, res) => {
   let values = req.body;
   console.log(values);
- 
 
   ActivityTypesTable.create({
     type_of_workout: values.type_of_workout,
     description_of_workout: values.description_of_workout,
     client_id: foreignId,
-  }).then((data) => {
-
+  })
+    .then((data) => {
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -655,23 +666,56 @@ app.post("/add_workout", (req, res) => {
   if (!req.body) return res.status(400).json("node node");
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
+// --------------------------------------------------------------запрос клиентов для добавления тренировки---------------------------
+async function makeDifferente(training_id) {
+  const clients = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    where: { client_role: "client" },
+    attributes: ["client_fio"],
+  });
 
+  console.log(clients);
+  const allClients = [];
+
+  clients.forEach((item) => {
+    console.log(item.client_fio);
+    allClients.push(item.client_fio);
+  });
+  const resultOne = await ActivityTable.findOne({
+    attributes: ["recorded_client"],
+    where: {
+      training_id: training_id,
+    },
+    raw: true,
+  });
+
+  const recorded = resultOne.recorded_client;
+
+  let difference = allClients.filter((x) => !recorded.includes(x));
+  const recordAndDifference = {
+    recorded: recorded,
+    difference: difference,
+  };
+  return recordAndDifference;
+}
+// --------------------------------------------------------------запрос клиентов ----------------------
 
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
 
-async function generateAccessToken (user) {
+async function generateAccessToken(user) {
   const payload = {
     id: user.client_id,
     name: await createFIO(user.client_id),
-    role: user.client_role
+    role: user.client_role,
   };
 
   console.log(payload);
   const secret = "ivan";
-  const options = { expiresIn: "10s" };
+  const options = { expiresIn: "5m" };
 
   return jwt.sign(payload, secret, options);
 }
@@ -710,8 +754,6 @@ function verifyRefreshToken(token) {
 }
 
 async function generateFreshforDB(user) {
-
-
   let freshKey = await generateRefreshToken(user.client_id);
 
   let newFresh = await ClientTable.update(
@@ -732,9 +774,9 @@ async function generateFreshforDB(user) {
     const freshDB = newFresh[1].dataValues.refresh_key_client;
 
     const userAccess = {
-      token: await generateAccessToken(user), 
+      token: await generateAccessToken(user),
       refreshToken: freshDB,
-    }
+    };
 
     return userAccess;
   } catch (error) {
@@ -745,10 +787,8 @@ async function generateFreshforDB(user) {
 }
 
 async function refreshRefreshTokenDB(reToken) {
-
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
-
 
   if (reToken === user.refresh_key_client) {
     return await generateFreshforDB(user);
@@ -768,13 +808,14 @@ async function findRefreshDB(reToken) {
 }
 
 async function findRefreshInDB(id) {
-
   let user;
   let reTokenDB = await ClientTable.findOne({
     raw: true,
     where: { client_id: id },
     logging: false,
-  }).catch((err) => console.log("-------------------------find Refresh      --- ",err));
+  }).catch((err) =>
+    console.log("-------------------------find Refresh      --- ", err)
+  );
 
   try {
     user = reTokenDB;
@@ -783,40 +824,38 @@ async function findRefreshInDB(id) {
     // return userAccess;
   }
 
-
-// let user = results.rows[0];
+  // let user = results.rows[0];
   return user;
 }
 
-
 function setStatusTrain(start, end) {
-  if (dayjs()>dayjs(end)) {
-    return "тренировка завершина"
-  } else if (dayjs()<dayjs(start)) {
-  return "тренировка запланирова"
+  if (dayjs() > dayjs(end)) {
+    return "тренировка завершена";
+  } else if (dayjs() < dayjs(start)) {
+    return "тренировка запланирова";
   } else {
-    return "тренировка в процессе"
+    return "тренировка в процессе";
   }
-  
 }
 
-function addStatusTrain(trains){
-
-  trains.forEach(element => {
-
-    let statusTrain = setStatusTrain(element.start_time_train, element.end_time_train)
-    element.status_train = statusTrain
-   
+function addStatusTrain(trains) {
+  trains.forEach((element) => {
+    let statusTrain = setStatusTrain(
+      element.start_time_train,
+      element.end_time_train
+    );
+    element.status_train = statusTrain;
   });
-  
 }
 
- async function createFIO  (id) {
+async function createFIO(id) {
   const user = await ClientTable.findOne({
     raw: true,
     where: { client_id: id },
   });
-  const fioFunc = (`${user.client_name} ${user.client_patronymic ?? ""} ${user.client_surname}`).trim()
-  const fio = fioFunc.replace(/ +/g, ' ').trim();
+  const fioFunc = `${user.client_surname} ${user.client_name} ${
+    user.client_patronymic ?? ""
+  } `.trim();
+  const fio = fioFunc.replace(/ +/g, " ").trim();
   return fio;
- }
+}
