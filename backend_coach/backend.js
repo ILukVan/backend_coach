@@ -278,7 +278,7 @@ app.post("/registration", async (req, res) => {
     (values.client_patronymic !== undefined
       ? " " + values.client_patronymic
       : "");
-  console.log(fioDB);
+
   ClientTable.create({
     client_phone_number: values.phone_number,
     client_password: bcrypt.hashSync(values.client_password, salt),
@@ -290,7 +290,7 @@ app.post("/registration", async (req, res) => {
     client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
     client_job: values.client_job,
     client_illness: values.client_illness,
-    client_messenger: values.client_messenger.join() || "noMessengers",
+    client_messenger: (values.client_messenger || []).join() || "noMessengers",
   })
     .then(async (data) => {
       console.log("Регистрация успешна");
@@ -382,7 +382,7 @@ app.use(async function (req, res, next) {
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/add_activity", async (req, res) => {
   let values = req.body;
-  console.log(values);
+
   let start_time =
     dayjs(values.weekday_train).format("YYYY-MM-DD") +
     " " +
@@ -400,7 +400,7 @@ app.post("/add_activity", async (req, res) => {
     console.log("-------------------------find Refresh      --- ", err)
   );
 
-  console.log(description);
+
 
   ActivityTable.create({
     type_of_training: values.type_of_training,
@@ -452,7 +452,7 @@ app.delete("/delete_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 app.put("/update_activity", async (req, res) => {
   let values = req.body;
-  console.log(values);
+
   await ActivityTable.update(
     {
       type_of_training: values.type_of_training,
@@ -490,7 +490,7 @@ app.put("/update_activity", async (req, res) => {
 
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 app.get("/logout", async (req, res) => {
-  console.log("Tut est cho?");
+  console.log("Выход из аккаунта");
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
   const user = await verifyRefreshToken(tokens.refreshToken).data;
@@ -606,7 +606,6 @@ app.post("/unsign_up_train", async (req, res) => {
 // --------------------------------------------------------------запрос клиентов для записи---------------------------
 app.post("/client_list_for_coach", async (req, res) => {
   const value = req.body.training_id
-  console.log(value);
   const list = await makeDifferente(value)
 
   res.status(200).json(list);
@@ -648,10 +647,10 @@ app.get("/workout_list", async (req, res) => {
   res.status(200).json(workout);
 });
 // --------------------------------------------------------------запрос типов тренировки ----------------------
-// --------------------------------------------------------------создать тренировку ---------------------------
+// --------------------------------------------------------------создать тип тренировки ---------------------------
 app.post("/add_workout", (req, res) => {
   let values = req.body;
-  console.log(values);
+
 
   ActivityTypesTable.create({
     type_of_workout: values.type_of_workout,
@@ -665,8 +664,66 @@ app.post("/add_workout", (req, res) => {
 
   if (!req.body) return res.status(400).json("node node");
 });
-// --------------------------------------------------------------создать тренировку ---------------------------
-// --------------------------------------------------------------запрос клиентов для добавления тренировки---------------------------
+// --------------------------------------------------------------создать тип тренировки ---------------------------
+// --------------------------------------------------------------удаление типа тренировки ---------------------------
+app.delete("/delete_workout_activity", async (req, res) => {
+  let values = req.body.training_id;
+
+  await ActivityTypesTable.destroy({
+    where: {
+      workout_id: values,
+    },
+    individualHooks: true,
+  }).catch((err) => console.log(err));
+
+  await ActivityTypesTable.findAll({
+    raw: true,
+  })
+    .then((data) => {
+      res.status(200).json(data);
+    })
+    .catch((err) => console.log(err));
+});
+// --------------------------------------------------------------удаление типа тренировки ---------------------------
+// --------------------------------------------------------------изменение типа тренировки ---------------------------
+app.put("/update_workout", async (req, res) => {
+  let values = req.body;
+  await ActivityTypesTable.update(
+    {
+      type_of_workout: values.type_of_workout,
+      description_of_workout: values.description_of_workout
+    },
+    {
+      where: {
+        workout_id: values.workout_id,
+      },
+    }
+  ).catch((err) => console.log("ediiiiiiiiit  type    --- ", err));
+
+  await ActivityTypesTable.findAll({
+    raw: true,
+
+  })
+    .then((data) => {
+      res.status(200).json(data);
+    })
+    .catch((err) => console.log(err));
+});
+// --------------------------------------------------------------изменение типа тренировки ---------------------------
+// --------------------------------------------------------------запрос профиля пользователя---------------------------
+app.post("/profile", async (req, res) => {
+  let id = req.body.id
+
+  const clientProfile = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    where: { client_id: id },
+  });
+
+  res.status(200).json(clientProfile);
+});
+// --------------------------------------------------------------запрос профиля пользователя ----------------------
+// --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
   const clients = await ClientTable.findAll({
     raw: true,
@@ -675,11 +732,11 @@ async function makeDifferente(training_id) {
     attributes: ["client_fio"],
   });
 
-  console.log(clients);
+
   const allClients = [];
 
   clients.forEach((item) => {
-    console.log(item.client_fio);
+
     allClients.push(item.client_fio);
   });
   const resultOne = await ActivityTable.findOne({
@@ -699,7 +756,7 @@ async function makeDifferente(training_id) {
   };
   return recordAndDifference;
 }
-// --------------------------------------------------------------запрос клиентов ----------------------
+// --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов----------------------
 
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
@@ -713,7 +770,7 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-  console.log(payload);
+
   const secret = "ivan";
   const options = { expiresIn: "5m" };
 
@@ -731,7 +788,7 @@ function generateRefreshToken(value) {
 }
 
 function verifyAccessToken(token) {
-  console.log();
+
   const secret = "ivan";
 
   try {
@@ -795,7 +852,7 @@ async function refreshRefreshTokenDB(reToken) {
   }
 }
 async function findRefreshDB(reToken) {
-  console.log(reToken);
+
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
 
