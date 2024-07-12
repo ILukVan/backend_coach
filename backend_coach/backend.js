@@ -141,6 +141,10 @@ const ClientTable = sequelize.define("client_table", {
   client_messenger: {
     type: Sequelize.STRING,
   },
+  client_attended_train: {
+    type: Sequelize.ARRAY(Sequelize.TEXT),
+    defaultValue: [],
+  },
 });
 
 const ActivityTable = sequelize.define("activity_table", {
@@ -167,6 +171,9 @@ const ActivityTable = sequelize.define("activity_table", {
     type: Sequelize.STRING,
   },
   end_time_train: {
+    type: Sequelize.STRING,
+  },
+  coach_train: {
     type: Sequelize.STRING,
   },
   client_id: {
@@ -411,6 +418,7 @@ app.post("/add_activity", async (req, res) => {
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
     client_id: foreignId,
+    coach_train: await createFIO(foreignId)
   })
     .then((data) => {
       res.status(200).json(data);
@@ -532,12 +540,31 @@ app.get("/coach_list", async (req, res) => {
   res.status(200).json(coaches);
 });
 // --------------------------------------------------------------запрос тренеров ----------------------
+// --------------------------------------------------------------запрос всех тренеров ---------------------------
+app.get("/coaches_list", async (req, res) => {
+  const coaches = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    where: { client_job: "тренер студии" },
+    attributes: ["client_fio"],
+    order: [
+      // массив для сортировки начинается с модели
+      // затем следует название поля и порядок сортировки
+      ["client_fio", "ASC"],
+    ],
+  });
+
+  res.status(200).json(coaches);
+});
+// --------------------------------------------------------------запрос всех тренеров ----------------------
 // --------------------------------------------------------------сделать тренером ---------------------------
 app.post("/create_coach", async (req, res) => {
   let values = req.body;
 
   const newRole = await ClientTable.update(
-    { client_role: "coach" },
+    { client_role: "coach",
+      client_job: "тренер студии"
+     },
     {
       where: {
         client_id: values.client_id,
@@ -730,6 +757,9 @@ async function makeDifferente(training_id) {
     logging: false,
     where: { client_role: "client" },
     attributes: ["client_fio"],
+    order: [
+      ["client_fio", "ASC"],
+    ],
   });
 
 
@@ -750,6 +780,7 @@ async function makeDifferente(training_id) {
   const recorded = resultOne.recorded_client;
 
   let difference = allClients.filter((x) => !recorded.includes(x));
+  difference.unshift('Пробник', 'Нет регистрации');
   const recordAndDifference = {
     recorded: recorded,
     difference: difference,
