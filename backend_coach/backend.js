@@ -17,6 +17,7 @@ app.use(express.json());
 const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize("coach_client", "ivan", "qwerty", {
+  host: '192.168.3.18',
   dialect: "postgres",
   logging: false,
 });
@@ -302,7 +303,9 @@ app.post("/registration", async (req, res) => {
     .then(async (data) => {
       console.log("Регистрация успешна");
       const user = data.dataValues;
+      console.log(user);
       const result = await generateFreshforDB(user);
+      console.log(result);
       res.status(200).json(result);
     })
     .catch((err) => {
