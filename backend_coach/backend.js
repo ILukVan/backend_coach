@@ -336,9 +336,12 @@ app.get("/activities", async (req, res) => {
 // --------------------------------------------------------------отобразить тренировки по дате---------------------------
 app.post("/date_activity", async (req, res) => {
   let values = req.body;
+  console.log(values, "--values--------------");
   let dateSelect = dayjs(values.data);
+  console.log(dateSelect, "-----date-------");
 
   if (dayjs.isDayjs(dateSelect)) {
+    console.log("здесь есть?");
     const sport = await ActivityTable.findAll({
       raw: true,
       order: [
@@ -354,12 +357,40 @@ app.post("/date_activity", async (req, res) => {
     addStatusTrain(sport);
 
     res.status(200).json(sport);
+    console.log("отправил расписание")
   } else {
     res.status(200).json(null);
   }
 });
 // --------------------------------------------------------------отобразить тренировки по дате ---------------------------
+// --------------------------------------------------------------запрос типов тренировки ---------------------------
+app.get("/workout_list", async (req, res) => {
+  const workout = await ActivityTypesTable.findAll({
+    raw: true,
+    logging: false,
+  });
+  console.log("tut");
+  res.status(200).json(workout);
+  console.log("tut2");
+});
+// --------------------------------------------------------------запрос типов тренировки ----------------------
+// --------------------------------------------------------------запрос всех тренеров ---------------------------
+app.get("/coaches_list", async (req, res) => {
+  const coaches = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    where: { client_job: "тренер студии" },
+    attributes: ["client_fio"],
+    order: [
+      // массив для сортировки начинается с модели
+      // затем следует название поля и порядок сортировки
+      ["client_fio", "ASC"],
+    ],
+  });
 
+  res.status(200).json(coaches);
+});
+// --------------------------------------------------------------запрос всех тренеров ----------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
@@ -540,23 +571,7 @@ app.get("/coach_list", async (req, res) => {
   res.status(200).json(coaches);
 });
 // --------------------------------------------------------------запрос тренеров ----------------------
-// --------------------------------------------------------------запрос всех тренеров ---------------------------
-app.get("/coaches_list", async (req, res) => {
-  const coaches = await ClientTable.findAll({
-    raw: true,
-    logging: false,
-    where: { client_job: "тренер студии" },
-    attributes: ["client_fio"],
-    order: [
-      // массив для сортировки начинается с модели
-      // затем следует название поля и порядок сортировки
-      ["client_fio", "ASC"],
-    ],
-  });
 
-  res.status(200).json(coaches);
-});
-// --------------------------------------------------------------запрос всех тренеров ----------------------
 // --------------------------------------------------------------сделать тренером ---------------------------
 app.post("/create_coach", async (req, res) => {
   let values = req.body;
@@ -664,16 +679,7 @@ app.post("/unsign_up_train_coach", async (req, res) => {
   res.status(200).json(list);
 });
 // --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
-// --------------------------------------------------------------запрос типов тренировки ---------------------------
-app.get("/workout_list", async (req, res) => {
-  const workout = await ActivityTypesTable.findAll({
-    raw: true,
-    logging: false,
-  });
 
-  res.status(200).json(workout);
-});
-// --------------------------------------------------------------запрос типов тренировки ----------------------
 // --------------------------------------------------------------создать тип тренировки ---------------------------
 app.post("/add_workout", (req, res) => {
   let values = req.body;
