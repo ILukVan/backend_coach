@@ -17,7 +17,7 @@ app.use(express.json());
 const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize("coach_client", "ivan", "qwerty", {
-  host: '192.168.3.18',
+  // host: '192.168.3.18',
   dialect: "postgres",
   logging: false,
 });
@@ -360,7 +360,7 @@ app.post("/date_activity", async (req, res) => {
     addStatusTrain(sport);
 
     res.status(200).json(sport);
-    console.log("отправил расписание")
+    console.log("отправил расписание");
   } else {
     res.status(200).json(null);
   }
@@ -441,8 +441,6 @@ app.post("/add_activity", async (req, res) => {
     console.log("-------------------------find Refresh      --- ", err)
   );
 
-
-
   ActivityTable.create({
     type_of_training: values.type_of_training,
     occupancy_train: parseInt(values.occupancy_train),
@@ -452,7 +450,7 @@ app.post("/add_activity", async (req, res) => {
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
     client_id: foreignId,
-    coach_train: await createFIO(foreignId)
+    coach_train: await createFIO(foreignId),
   })
     .then((data) => {
       res.status(200).json(data);
@@ -580,9 +578,7 @@ app.post("/create_coach", async (req, res) => {
   let values = req.body;
 
   const newRole = await ClientTable.update(
-    { client_role: "coach",
-      client_job: "тренер студии"
-     },
+    { client_role: "coach", client_job: "тренер студии" },
     {
       where: {
         client_id: values.client_id,
@@ -634,6 +630,7 @@ app.post("/sign_up_train", async (req, res) => {
   const result = await sequelize.query(
     `UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`
   );
+  res.status(200).json("записан");
 });
 // --------------------------------------------------------------запись на тренировку ---------------------------
 // --------------------------------------------------------------отпись от тренировки---------------------------
@@ -646,12 +643,13 @@ app.post("/unsign_up_train", async (req, res) => {
   const result = await sequelize.query(
     `UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`
   );
+  res.status(200).json("отписан");
 });
 // --------------------------------------------------------------отпись от тренировки ---------------------------
 // --------------------------------------------------------------запрос клиентов для записи---------------------------
 app.post("/client_list_for_coach", async (req, res) => {
-  const value = req.body.training_id
-  const list = await makeDifferente(value)
+  const value = req.body.training_id;
+  const list = await makeDifferente(value);
 
   res.status(200).json(list);
 });
@@ -665,7 +663,7 @@ app.post("/sign_up_train_coach", async (req, res) => {
     `UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${client}') WHERE training_id = '${values.training_id}'`
   );
 
-  const list = await makeDifferente(values.training_id)
+  const list = await makeDifferente(values.training_id);
 
   res.status(200).json(list);
 });
@@ -677,7 +675,7 @@ app.post("/unsign_up_train_coach", async (req, res) => {
   const result = await sequelize.query(
     `UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${values.client}') WHERE training_id = '${values.training_id}'`
   );
-  const list = await makeDifferente(values.training_id)
+  const list = await makeDifferente(values.training_id);
 
   res.status(200).json(list);
 });
@@ -686,7 +684,6 @@ app.post("/unsign_up_train_coach", async (req, res) => {
 // --------------------------------------------------------------создать тип тренировки ---------------------------
 app.post("/add_workout", (req, res) => {
   let values = req.body;
-
 
   ActivityTypesTable.create({
     type_of_workout: values.type_of_workout,
@@ -727,7 +724,7 @@ app.put("/update_workout", async (req, res) => {
   await ActivityTypesTable.update(
     {
       type_of_workout: values.type_of_workout,
-      description_of_workout: values.description_of_workout
+      description_of_workout: values.description_of_workout,
     },
     {
       where: {
@@ -738,7 +735,6 @@ app.put("/update_workout", async (req, res) => {
 
   await ActivityTypesTable.findAll({
     raw: true,
-
   })
     .then((data) => {
       res.status(200).json(data);
@@ -748,17 +744,84 @@ app.put("/update_workout", async (req, res) => {
 // --------------------------------------------------------------изменение типа тренировки ---------------------------
 // --------------------------------------------------------------запрос профиля пользователя---------------------------
 app.post("/profile", async (req, res) => {
-  let id = req.body.id
+  let id = req.body.id;
 
   const clientProfile = await ClientTable.findOne({
     raw: true,
     logging: false,
+    attributes: [
+      "client_phone_number",
+      "client_name",
+      "client_patronymic",
+      "client_surname",
+      "client_fio",
+      "client_birthday",
+      "client_email",
+      "client_registration_date",
+      "client_job",
+      "client_illness",
+      "client_messenger",
+    ],
     where: { client_id: id },
   });
 
   res.status(200).json(clientProfile);
 });
 // --------------------------------------------------------------запрос профиля пользователя ----------------------
+// --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
+app.put("/update_profile", async (req, res) => {
+  let values = req.body;
+  console.log(values, "------------------------ новые данные");
+
+  const fioDB =
+  values.client_surname +
+  " " +
+  values.client_name +
+  (values.client_patronymic !== undefined
+    ? " " + values.client_patronymic
+    : "");
+
+await ClientTable.update(
+  {
+    client_phone_number: values.client_phone_number,
+    client_name: values.client_name,
+    client_patronymic: values.client_patronymic,
+    client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
+    client_fio: fioDB,
+    client_email: values.client_email,
+    client_job: values.client_job,
+    client_illness: values.client_illness,
+  },
+  {
+    where: {
+      client_id: values.client_id,
+    },
+  }
+).catch((err) => console.log("ediiiiiiiiit      --- ", err));
+
+const clientProfile = await ClientTable.findOne({
+  raw: true,
+  logging: false,
+  attributes: [
+    "client_phone_number",
+    "client_name",
+    "client_patronymic",
+    "client_surname",
+    "client_fio",
+    "client_birthday",
+    "client_email",
+    "client_registration_date",
+    "client_job",
+    "client_illness",
+    "client_messenger",
+  ],
+  where: { client_id: values.client_id },
+});
+
+res.status(200).json(clientProfile);
+});
+
+// --------------------------------------------------------------изменение тренировки ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
   const clients = await ClientTable.findAll({
@@ -766,16 +829,12 @@ async function makeDifferente(training_id) {
     logging: false,
     where: { client_role: "client" },
     attributes: ["client_fio"],
-    order: [
-      ["client_fio", "ASC"],
-    ],
+    order: [["client_fio", "ASC"]],
   });
-
 
   const allClients = [];
 
   clients.forEach((item) => {
-
     allClients.push(item.client_fio);
   });
   const resultOne = await ActivityTable.findOne({
@@ -789,7 +848,7 @@ async function makeDifferente(training_id) {
   const recorded = resultOne.recorded_client;
 
   let difference = allClients.filter((x) => !recorded.includes(x));
-  difference.unshift('Пробник', 'Нет регистрации');
+  difference.unshift("Пробник", "Нет регистрации");
   const recordAndDifference = {
     recorded: recorded,
     difference: difference,
@@ -810,7 +869,6 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-
   const secret = "ivan";
   const options = { expiresIn: "5m" };
 
@@ -828,7 +886,6 @@ function generateRefreshToken(value) {
 }
 
 function verifyAccessToken(token) {
-
   const secret = "ivan";
 
   try {
@@ -892,7 +949,6 @@ async function refreshRefreshTokenDB(reToken) {
   }
 }
 async function findRefreshDB(reToken) {
-
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
 
