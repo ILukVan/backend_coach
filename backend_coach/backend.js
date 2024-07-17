@@ -184,10 +184,10 @@ const ActivityTable = sequelize.define("activity_table", {
       key: "client_id",
     },
   },
-  recorded_client: {
-    type: Sequelize.ARRAY(Sequelize.TEXT),
-    defaultValue: [],
-  },
+  // recorded_client: {
+  //   type: Sequelize.ARRAY(Sequelize.TEXT),
+  //   defaultValue: [],
+  // },
 });
 
 const ActivityTypesTable = sequelize.define("activity_type_table", {
@@ -212,6 +212,21 @@ const ActivityTypesTable = sequelize.define("activity_type_table", {
       key: "client_id",
     },
   },
+});
+
+const ActivityAndClientTable = sequelize.define(
+  "activity_and_client_table",
+  {},
+  { timestamps: false }
+);
+
+ActivityTable.belongsToMany(ClientTable, {
+  through: ActivityAndClientTable,
+  foreignKey: "training_id",
+});
+ClientTable.belongsToMany(ActivityTable, {
+  through: ActivityAndClientTable,
+  foreignKey: "client_id",
 });
 
 ClientTable.hasMany(ActivityTable, {
@@ -283,7 +298,7 @@ app.post("/registration", async (req, res) => {
     values.client_surname +
     " " +
     values.client_name +
-    (values.client_patronymic !== undefined
+    (values.client_patronymic !== undefined || values.client_patronymic !== null
       ? " " + values.client_patronymic
       : "");
 
@@ -339,9 +354,8 @@ app.get("/activities", async (req, res) => {
 // --------------------------------------------------------------отобразить тренировки по дате---------------------------
 app.post("/date_activity", async (req, res) => {
   let values = req.body;
-  console.log(values, "--values--------------");
   let dateSelect = dayjs(values.data);
-  console.log(dateSelect, "-----date-------");
+
 
   if (dayjs.isDayjs(dateSelect)) {
     console.log("здесь есть?");
@@ -356,8 +370,8 @@ app.post("/date_activity", async (req, res) => {
         weekday_train: values.date,
       },
     });
-
     addStatusTrain(sport);
+    await trainVisiters(sport)
 
     res.status(200).json(sport);
     console.log("отправил расписание");
@@ -625,11 +639,11 @@ app.delete("/delete_coach", async (req, res) => {
 app.post("/sign_up_train", async (req, res) => {
   let values = req.body;
 
-  const fio = await createFIO(foreignId);
+  await ActivityAndClientTable.create({
+    training_id: values.training_id,
+    client_id: foreignId,
+  });
 
-  const result = await sequelize.query(
-    `UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`
-  );
   res.status(200).json("записан");
 });
 // --------------------------------------------------------------запись на тренировку ---------------------------
@@ -637,12 +651,14 @@ app.post("/sign_up_train", async (req, res) => {
 app.post("/unsign_up_train", async (req, res) => {
   let values = req.body;
 
-  const fio = await createFIO(foreignId);
-  let index = values.recorded_client;
+  await ActivityAndClientTable.destroy({
+    where: {
+      client_id: values.client_id,
+      training_id: values.training_id, 
+    },
+    individualHooks: true,
+  }).catch((err) => console.log(err));
 
-  const result = await sequelize.query(
-    `UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${fio}') WHERE training_id = '${values.training_id}'`
-  );
   res.status(200).json("отписан");
 });
 // --------------------------------------------------------------отпись от тренировки ---------------------------
@@ -657,11 +673,11 @@ app.post("/client_list_for_coach", async (req, res) => {
 // --------------------------------------------------------------тренер записывает на тренировку  клиента--------------------------
 app.post("/sign_up_train_coach", async (req, res) => {
   let values = req.body;
-  const client = values.client.trim();
 
-  const result = await sequelize.query(
-    `UPDATE activity_tables SET recorded_client = array_append(recorded_client, '${client}') WHERE training_id = '${values.training_id}'`
-  );
+  await ActivityAndClientTable.create({
+    training_id: values.training_id,
+    client_id: values.client_id,
+  });
 
   const list = await makeDifferente(values.training_id);
 
@@ -672,9 +688,14 @@ app.post("/sign_up_train_coach", async (req, res) => {
 app.post("/unsign_up_train_coach", async (req, res) => {
   let values = req.body;
 
-  const result = await sequelize.query(
-    `UPDATE activity_tables SET recorded_client = array_remove(recorded_client, '${values.client}') WHERE training_id = '${values.training_id}'`
-  );
+  await ActivityAndClientTable.destroy({
+    where: {
+      client_id: values.client_id,
+      training_id: values.training_id, 
+    },
+    individualHooks: true,
+  }).catch((err) => console.log(err));
+
   const list = await makeDifferente(values.training_id);
 
   res.status(200).json(list);
@@ -768,89 +789,127 @@ app.post("/profile", async (req, res) => {
   res.status(200).json(clientProfile);
 });
 // --------------------------------------------------------------запрос профиля пользователя ----------------------
+// --------------------------------------------------------------запрос посещенных тренировок---------------------------
+app.post("/visited_trains", async (req, res) => {
+  let visited = [];
+  let id = req.body;
+ 
+ 
+  const visited_trains = await ActivityAndClientTable.findAll({
+    raw: true,
+    logging: false,
+    attributes: ["training_id"],
+    where: { client_id: foreignId },
+  });
+
+
+  for (const train of visited_trains) {
+    const visit_train = await ActivityTable.findOne({
+      raw: true,
+      logging: false,
+      attributes: ["type_of_training", "start_time_train", "training_id"],
+      where: { training_id: train.training_id },
+    });
+
+    visited.push(visit_train);
+  }
+
+
+  res.status(200).json(visited);
+});
+// ---------------------------------------------------------------запрос посещенных тренировок ----------------------
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 app.put("/update_profile", async (req, res) => {
   let values = req.body;
   console.log(values, "------------------------ новые данные");
 
   const fioDB =
-  values.client_surname +
-  " " +
-  values.client_name +
-  (values.client_patronymic !== undefined
-    ? " " + values.client_patronymic
-    : "");
+    values.client_surname +
+    " " +
+    values.client_name +
+    (values.client_patronymic !== undefined || values.client_patronymic !== null
+      ? " " + values.client_patronymic
+      : "");
 
-await ClientTable.update(
-  {
-    client_phone_number: values.client_phone_number,
-    client_name: values.client_name,
-    client_patronymic: values.client_patronymic,
-    client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
-    client_fio: fioDB,
-    client_email: values.client_email,
-    client_job: values.client_job,
-    client_illness: values.client_illness,
-  },
-  {
-    where: {
-      client_id: values.client_id,
+  const updateData = await ClientTable.update(
+    {
+      client_phone_number: values.client_phone_number,
+      client_name: values.client_name,
+      client_patronymic: values.client_patronymic,
+      client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
+      client_fio: fioDB,
+      client_email: values.client_email,
+      client_job: values.client_job,
+      client_illness: values.client_illness,
     },
-  }
-).catch((err) => console.log("ediiiiiiiiit      --- ", err));
+    {
+      where: {
+        client_id: values.client_id,
+      },
+    }
+  ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
 
-const clientProfile = await ClientTable.findOne({
-  raw: true,
-  logging: false,
-  attributes: [
-    "client_phone_number",
-    "client_name",
-    "client_patronymic",
-    "client_surname",
-    "client_fio",
-    "client_birthday",
-    "client_email",
-    "client_registration_date",
-    "client_job",
-    "client_illness",
-    "client_messenger",
-  ],
-  where: { client_id: values.client_id },
+  const clientProfile = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: [
+      "client_phone_number",
+      "client_name",
+      "client_patronymic",
+      "client_surname",
+      "client_fio",
+      "client_birthday",
+      "client_email",
+      "client_registration_date",
+      "client_job",
+      "client_illness",
+      "client_messenger",
+    ],
+    where: { client_id: values.client_id },
+  });
+  console.log(updateData);
+  console.log(clientProfile);
+  res.status(200).json(clientProfile);
 });
 
-res.status(200).json(clientProfile);
-});
-
-// --------------------------------------------------------------изменение тренировки ---------------------------
+// --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
+  console.log(training_id);
+  let recorded_clients = [];
+  const recorded_client = await ActivityAndClientTable.findAll({
+    raw: true,
+    logging: false,
+    attributes: ["client_id"],
+    where: { training_id: training_id },
+  });
+  console.log(recorded_client);
+  for (const client of recorded_client) {
+    const clientFio = await ClientTable.findOne({
+      raw: true,
+      logging: false,
+      attributes: ["client_fio", "client_id"],
+      where: { client_id: client.client_id },
+    });
+
+    recorded_clients.push(clientFio);
+  }
+
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
     where: { client_role: "client" },
-    attributes: ["client_fio"],
+    attributes: ["client_fio", "client_id"],
     order: [["client_fio", "ASC"]],
   });
 
-  const allClients = [];
 
-  clients.forEach((item) => {
-    allClients.push(item.client_fio);
-  });
-  const resultOne = await ActivityTable.findOne({
-    attributes: ["recorded_client"],
-    where: {
-      training_id: training_id,
-    },
-    raw: true,
-  });
+  let difference = clients.filter(person_A => !recorded_clients.some(person_B => person_A.client_id === person_B.client_id));
 
-  const recorded = resultOne.recorded_client;
 
-  let difference = allClients.filter((x) => !recorded.includes(x));
-  difference.unshift("Пробник", "Нет регистрации");
+  // difference.unshift("Пробник", "Нет регистрации");
   const recordAndDifference = {
-    recorded: recorded,
+    recorded: recorded_clients,
     difference: difference,
   };
   return recordAndDifference;
@@ -870,7 +929,7 @@ async function generateAccessToken(user) {
   };
 
   const secret = "ivan";
-  const options = { expiresIn: "5m" };
+  const options = { expiresIn: "10s" };
 
   return jwt.sign(payload, secret, options);
 }
@@ -980,7 +1039,7 @@ async function findRefreshInDB(id) {
   // let user = results.rows[0];
   return user;
 }
-
+// -------------------------------------------------------функция проверки статуса тренировки ----------------------------------------------
 function setStatusTrain(start, end) {
   if (dayjs() > dayjs(end)) {
     return "тренировка завершена";
@@ -990,7 +1049,8 @@ function setStatusTrain(start, end) {
     return "тренировка в процессе";
   }
 }
-
+// -------------------------------------------------------функция проверки статуса тренировки ----------------------------------------------
+// ------------------------------------функция добавления статуса тренировки к тренировкам -----------------------------------------
 function addStatusTrain(trains) {
   trains.forEach((element) => {
     let statusTrain = setStatusTrain(
@@ -998,9 +1058,34 @@ function addStatusTrain(trains) {
       element.end_time_train
     );
     element.status_train = statusTrain;
+    element.recorded_client = []
   });
-}
 
+}
+// ------------------------------------функция добавления статуса тренировки к тренировкам -----------------------------------------
+// ------------------------------------функция добавления записанных клиентов к тренировкам -----------------------------------------
+async function trainVisiters(trains) {
+
+  for (const train of trains) {
+    const train_visiters = await ActivityAndClientTable.findAll({
+      raw: true,
+      logging: false,
+      attributes: ["client_id"],
+      where: { training_id: train.training_id },
+    });
+
+    for (const client of train_visiters) {
+      const fioForTrain = await ClientTable.findOne({
+        raw: true,
+        logging: false,
+        attributes: ["client_fio"],
+        where: { client_id: client.client_id },
+      });
+      train.recorded_client.push(fioForTrain.client_fio)
+    }
+  }
+}  
+// ------------------------------------функция добавления записанных клиентов к тренировкам -----------------------------------------
 async function createFIO(id) {
   const user = await ClientTable.findOne({
     raw: true,
