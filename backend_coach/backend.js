@@ -293,15 +293,15 @@ app.post("/signIn", async (req, res) => {
 // -------------------------------------------------------------- регистрация---------------------------
 app.post("/registration", async (req, res) => {
   let values = req.body;
-
+  console.log(values.client_patronymic);
   const fioDB =
     values.client_surname +
     " " +
     values.client_name +
-    (values.client_patronymic !== undefined || values.client_patronymic !== null
+    await (values.client_patronymic !== undefined
       ? " " + values.client_patronymic
       : "");
-
+      console.log(`|${fioDB}|`);
   ClientTable.create({
     client_phone_number: values.phone_number,
     client_password: bcrypt.hashSync(values.client_password, salt),
@@ -318,9 +318,9 @@ app.post("/registration", async (req, res) => {
     .then(async (data) => {
       console.log("Регистрация успешна");
       const user = data.dataValues;
-      console.log(user);
+
       const result = await generateFreshforDB(user);
-      console.log(result);
+
       res.status(200).json(result);
     })
     .catch((err) => {
@@ -358,7 +358,7 @@ app.post("/date_activity", async (req, res) => {
 
 
   if (dayjs.isDayjs(dateSelect)) {
-    console.log("здесь есть?");
+
     const sport = await ActivityTable.findAll({
       raw: true,
       order: [
@@ -374,6 +374,7 @@ app.post("/date_activity", async (req, res) => {
     await trainVisiters(sport)
 
     res.status(200).json(sport);
+
     console.log("отправил расписание");
   } else {
     res.status(200).json(null);
@@ -386,9 +387,9 @@ app.get("/workout_list", async (req, res) => {
     raw: true,
     logging: false,
   });
-  console.log("tut");
+
   res.status(200).json(workout);
-  console.log("tut2");
+
 });
 // --------------------------------------------------------------запрос типов тренировки ----------------------
 // --------------------------------------------------------------запрос всех тренеров ---------------------------
@@ -455,7 +456,7 @@ app.post("/add_activity", async (req, res) => {
     console.log("-------------------------find Refresh      --- ", err)
   );
 
-  ActivityTable.create({
+   await ActivityTable.create({
     type_of_training: values.type_of_training,
     occupancy_train: parseInt(values.occupancy_train),
     start_time_train: start_time,
@@ -465,12 +466,11 @@ app.post("/add_activity", async (req, res) => {
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
     client_id: foreignId,
     coach_train: await createFIO(foreignId),
-  })
-    .then((data) => {
-      res.status(200).json(data);
-    })
-    .catch((err) => console.log(err));
+  }).catch((err) => console.log(err));
 
+    const sport = await getTrainsByDay(dayjs(values.weekday_train).format("YYYY-MM-DD"))
+    res.status(200).json(sport);
+    console.log("создал тренировку и отправил");
   if (!req.body) return res.status(400).json("node node");
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
@@ -486,21 +486,10 @@ app.delete("/delete_activity", async (req, res) => {
     individualHooks: true,
   }).catch((err) => console.log(err));
 
-  await ActivityTable.findAll({
-    raw: true,
-    order: [
-      // массив для сортировки начинается с модели
-      // затем следует название поля и порядок сортировки
-      ["start_time_train", "ASC"],
-    ],
-    where: {
-      weekday_train: delDate || today,
-    },
-  })
-    .then((data) => {
-      res.status(200).json(data);
-    })
-    .catch((err) => console.log(err));
+   const sport = await getTrainsByDay(delDate)
+   console.log("=== удалил и отправил тренировки==");
+   res.status(200).json(sport);
+
 });
 // --------------------------------------------------------------удаление тренировки ---------------------------
 // --------------------------------------------------------------изменение тренировки ---------------------------
@@ -524,21 +513,10 @@ app.put("/update_activity", async (req, res) => {
     }
   ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
 
-  await ActivityTable.findAll({
-    raw: true,
-    order: [
-      // массив для сортировки начинается с модели
-      // затем следует название поля и порядок сортировки
-      ["start_time_train", "ASC"],
-    ],
-    where: {
-      weekday_train: values.date || today,
-    },
-  })
-    .then((data) => {
-      res.status(200).json(data);
-    })
-    .catch((err) => console.log(err));
+  const sport = await getTrainsByDay(values.date)
+  res.status(200).json(sport);
+  console.log("изменил тренировку и отправил");
+
 });
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
@@ -569,6 +547,9 @@ app.get("/client_list", async (req, res) => {
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
+    order: [
+      ["client_fio", "ASC"],
+    ],
     where: { client_role: "client" },
   });
 
@@ -723,6 +704,7 @@ app.post("/add_workout", (req, res) => {
 app.delete("/delete_workout_activity", async (req, res) => {
   let values = req.body.training_id;
 
+
   await ActivityTypesTable.destroy({
     where: {
       workout_id: values,
@@ -733,7 +715,8 @@ app.delete("/delete_workout_activity", async (req, res) => {
   await ActivityTypesTable.findAll({
     raw: true,
   })
-    .then((data) => {
+    .then(async (data) => {
+
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -799,7 +782,7 @@ app.post("/visited_trains", async (req, res) => {
     raw: true,
     logging: false,
     attributes: ["training_id"],
-    where: { client_id: foreignId },
+    where: { client_id: id.client_id },
   });
 
 
@@ -827,7 +810,7 @@ app.put("/update_profile", async (req, res) => {
     values.client_surname +
     " " +
     values.client_name +
-    (values.client_patronymic !== undefined || values.client_patronymic !== null
+    await (values.client_patronymic !== null
       ? " " + values.client_patronymic
       : "");
 
@@ -836,6 +819,7 @@ app.put("/update_profile", async (req, res) => {
       client_phone_number: values.client_phone_number,
       client_name: values.client_name,
       client_patronymic: values.client_patronymic,
+      client_surname: values.client_surname,
       client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
       client_fio: fioDB,
       client_email: values.client_email,
@@ -867,15 +851,14 @@ app.put("/update_profile", async (req, res) => {
     ],
     where: { client_id: values.client_id },
   });
-  console.log(updateData);
-  console.log(clientProfile);
+
   res.status(200).json(clientProfile);
 });
 
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
-  console.log(training_id);
+
   let recorded_clients = [];
   const recorded_client = await ActivityAndClientTable.findAll({
     raw: true,
@@ -883,7 +866,7 @@ async function makeDifferente(training_id) {
     attributes: ["client_id"],
     where: { training_id: training_id },
   });
-  console.log(recorded_client);
+
   for (const client of recorded_client) {
     const clientFio = await ClientTable.findOne({
       raw: true,
@@ -907,6 +890,7 @@ async function makeDifferente(training_id) {
   let difference = clients.filter(person_A => !recorded_clients.some(person_B => person_A.client_id === person_B.client_id));
 
 
+
   // difference.unshift("Пробник", "Нет регистрации");
   const recordAndDifference = {
     recorded: recorded_clients,
@@ -923,6 +907,7 @@ app.listen(3500, function () {
 
 async function generateAccessToken(user) {
   const payload = {
+    
     id: user.client_id,
     name: await createFIO(user.client_id),
     role: user.client_role,
@@ -1078,10 +1063,10 @@ async function trainVisiters(trains) {
       const fioForTrain = await ClientTable.findOne({
         raw: true,
         logging: false,
-        attributes: ["client_fio"],
+        attributes: ["client_id"],
         where: { client_id: client.client_id },
       });
-      train.recorded_client.push(fioForTrain.client_fio)
+      train.recorded_client.push(fioForTrain.client_id)
     }
   }
 }  
@@ -1096,4 +1081,21 @@ async function createFIO(id) {
   } `.trim();
   const fio = fioFunc.replace(/ +/g, " ").trim();
   return fio;
+}
+
+async function getTrainsByDay(date) {
+  const sport = await ActivityTable.findAll({
+    raw: true,
+    order: [
+      // массив для сортировки начинается с модели
+      // затем следует название поля и порядок сортировки
+      ["start_time_train", "ASC"],
+    ],
+    where: {
+      weekday_train: date,
+    },
+  });
+  addStatusTrain(sport);
+  await trainVisiters(sport)
+  return sport  
 }
