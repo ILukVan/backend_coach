@@ -1,6 +1,8 @@
 const express = require("express"); // получаем модуль express
 const cors = require("cors");
 const dayjs = require("dayjs");
+const nodemailer = require('nodemailer');
+const directTransport = require('nodemailer-direct-transport');
 require("dayjs/locale/ru");
 dayjs.locale("ru");
 // подключаем bcrypt
@@ -146,6 +148,9 @@ const ClientTable = sequelize.define("client_table", {
     type: Sequelize.ARRAY(Sequelize.TEXT),
     defaultValue: [],
   },
+  client_restore: {
+    type: Sequelize.STRING,
+  },
 });
 
 const ActivityTable = sequelize.define("activity_table", {
@@ -213,6 +218,8 @@ const ActivityTypesTable = sequelize.define("activity_type_table", {
     },
   },
 });
+
+
 
 const ActivityAndClientTable = sequelize.define(
   "activity_and_client_table",
@@ -293,21 +300,39 @@ app.post("/signIn", async (req, res) => {
 // -------------------------------------------------------------- регистрация---------------------------
 app.post("/registration", async (req, res) => {
   let values = req.body;
-  console.log(values.client_patronymic);
-  const fioDB =
-    values.client_surname +
+ 
+      const nameClientTrim = (values.client_name !== undefined
+        ? values.client_name.trim()
+        : "");
+      const surnameClientTrim = (values.client_surname !== undefined
+        ?  values.client_surname.trim()
+        : "");
+      const patronymicClientTrim = (values.client_patronymic !== undefined
+        ? values.client_patronymic.trim()
+        : "");
+
+      const fioDB =
+    surnameClientTrim +
     " " +
-    values.client_name +
-    await (values.client_patronymic !== undefined
-      ? " " + values.client_patronymic
+    nameClientTrim +
+    await (patronymicClientTrim !== undefined
+      ? " " + patronymicClientTrim
       : "");
-      console.log(`|${fioDB}|`);
+
+
+        const phoneNumber = values.phone_number
+        const lengthPhoneNumber = phoneNumber.length-phoneNumber.replace(/\d/gm,'').length;
+      if (lengthPhoneNumber !== 11) {
+        res.status(406).json("Ошибка регистрарции");
+      }
+
+
   ClientTable.create({
     client_phone_number: values.phone_number,
     client_password: bcrypt.hashSync(values.client_password, salt),
-    client_name: values.client_name,
+    client_name: values.client_name.trim(),
     client_patronymic: values.client_patronymic,
-    client_surname: values.client_surname,
+    client_surname: values.client_surname.trim(),
     client_fio: fioDB,
     client_email: values.client_email,
     client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
@@ -409,6 +434,35 @@ app.get("/coaches_list", async (req, res) => {
   res.status(200).json(coaches);
 });
 // --------------------------------------------------------------запрос всех тренеров ----------------------
+// --------------------------------------------------------------Восстановление профиля---------------------------
+app.post("/restore_profile", async (req, res) => {
+  let values = req.body;
+
+  const email = await ClientTable.findOne({
+    raw: true,
+    where: { client_email: values.email },
+    attributes: ["client_email, client_id"],
+  });
+
+  console.log(email);
+  if (email) {
+    res.status(200).json("sign");
+    const randomstring = Math.random().toString(36).slice(-8);
+    await ActivityTable.update(
+      {
+        client_restore: bcrypt.hashSync(randomstring, salt),
+      },
+      {
+        where: {
+          client_id: email.client_id
+        },
+      }
+    ).catch((err) => console.log("restore profile      --- ", err));
+  } else {
+    res.status(403).json("reg");
+  }
+});
+// --------------------------------------------------------------Восстановление профиля ---------------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
@@ -804,22 +858,31 @@ app.post("/visited_trains", async (req, res) => {
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 app.put("/update_profile", async (req, res) => {
   let values = req.body;
-  console.log(values, "------------------------ новые данные");
 
-  const fioDB =
-    values.client_surname +
+  
+      const nameClientTrim = (values.client_name !== null
+        ? values.client_name.trim()
+        : "");
+      const surnameClientTrim = (values.client_surname !== null
+        ?  values.client_surname.trim()
+        : "");
+      const patronymicClientTrim = (values.client_patronymic !== null
+        ? values.client_patronymic.trim()
+        : "");
+      console.log(`|${surnameClientTrim}| |${nameClientTrim}| |${patronymicClientTrim}|`);
+      const fioDB =
+    surnameClientTrim +
     " " +
-    values.client_name +
+    nameClientTrim +
     await (values.client_patronymic !== null
-      ? " " + values.client_patronymic
+      ? " " + values.client_patronymic.trim()
       : "");
-
   const updateData = await ClientTable.update(
     {
       client_phone_number: values.client_phone_number,
-      client_name: values.client_name,
+      client_name: values.client_name.trim(),
       client_patronymic: values.client_patronymic,
-      client_surname: values.client_surname,
+      client_surname: values.client_surname.trim(),
       client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
       client_fio: fioDB,
       client_email: values.client_email,
@@ -856,6 +919,24 @@ app.put("/update_profile", async (req, res) => {
 });
 
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
+// --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
+app.put("/update_password", async (req, res) => {
+  let values = req.body;
+
+  await ClientTable.update(
+    {
+      client_password: bcrypt.hashSync(values.client_password, salt),
+    },
+    {
+      where: {
+        client_id: values.client_id,
+      },
+    }
+  ).catch((err) => console.log("change password    --- ", err));
+
+  res.status(200).json("Успешно")
+})
+// --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
 
@@ -899,7 +980,54 @@ async function makeDifferente(training_id) {
   return recordAndDifference;
 }
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов----------------------
+// --------------------------------------------------------------отправить Письмо email ---------------------------
+app.get("/send_email", async (req, res) => {
 
+  // const fromHost = `mail.my`;
+  // const from = 'ActivityRestore' + '@' + fromHost; //придумываете свою почту(может быть несуществующая)
+  // const to = 'blakangel57@yandex.ru';
+  // const transport = nodemailer.createTransport(directTransport({
+  //   name: fromHost
+  // }));
+  // transport.sendMail({
+  //   from, to,
+  //   subject: 'Заголовок письма',
+  //   html: `
+  //          <h1>Ваше письмо</h1>
+  //         `
+  // }, (err, data) => {
+  //   if (err) {
+  //     console.error('Ошибка при отправке:', err);
+  //   } else {
+  //     console.log('Письмо отправлено');
+  //   }
+  // });
+
+
+
+// async function sendRestoreMail(email, code) {
+  
+// }
+//   let transporter = nodemailer.createTransport({
+//     service: 'gmail',
+//     auth: {
+//         user: 'i.lukashuk.kodibosh@gmail.com',
+//         pass: 'uizn tisv bvvu rvas',
+//     },
+// });
+
+// let result = await transporter.sendMail({
+//     from: '"Node js" <nodejs@example.com>',
+//     to: email,
+//     subject: 'Message from Node js',
+//     text: 'This message was sent from Node js server.',
+//     html:
+//         'This <i>message</i> was sent from <strong>Node js</strong> server.',
+// });
+
+// console.log(result);
+})
+// --------------------------------------------------------------отправить Письмо email ---------------------------
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
