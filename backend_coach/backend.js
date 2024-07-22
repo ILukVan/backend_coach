@@ -1,7 +1,10 @@
+
 const express = require("express"); // получаем модуль express
 const cors = require("cors");
 const dayjs = require("dayjs");
 const nodemailer = require('nodemailer');
+const uuid = require('uuid');
+
 const directTransport = require('nodemailer-direct-transport');
 require("dayjs/locale/ru");
 dayjs.locale("ru");
@@ -441,14 +444,15 @@ app.post("/restore_profile", async (req, res) => {
   const email = await ClientTable.findOne({
     raw: true,
     where: { client_email: values.email },
-    attributes: ["client_email, client_id"],
+    attributes: ["client_email", "client_id"],
   });
 
-  console.log(email);
   if (email) {
-    res.status(200).json("sign");
+
+    res.status(200).json(email.client_email);
     const randomstring = Math.random().toString(36).slice(-8);
-    await ActivityTable.update(
+    await sendRestoreMail(email, randomstring)
+    await ClientTable.update(
       {
         client_restore: bcrypt.hashSync(randomstring, salt),
       },
@@ -463,6 +467,52 @@ app.post("/restore_profile", async (req, res) => {
   }
 });
 // --------------------------------------------------------------Восстановление профиля ---------------------------
+
+// --------------------------------------------------------------Восстановление профиля, сверка кода восстановления ---------------------------
+app.post("/verify_code", async (req, res) => {
+  let values = req.body;
+  const verifyCode = values.verifyCode.trim()
+  const email = await ClientTable.findOne({
+    raw: true,
+    where: { client_email: values.email },
+    attributes: ["client_email", "client_restore"],
+  });
+
+
+  bcrypt.compare(
+    verifyCode,
+    email.client_restore,
+    async function (error, result) {
+      if (result) {
+        console.log("код верный");
+        res.status(200).json("Восстанавливаем пароль");
+      } else {
+        console.log(error);
+        res.status(403).json("Неверный код");
+      }
+    }
+  );
+});
+// --------------------------------------------------------------Восстановление профиля, сверка кода восстановления ---------------------------
+// --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
+app.put("/restore_password", async (req, res) => {
+  let values = req.body;
+
+  await ClientTable.update(
+    {
+      client_password: bcrypt.hashSync(values.client_password, salt),
+      client_restore: null, 
+    },
+    {
+      where: {
+        client_email: values.client_email,
+      },
+    }
+  ).catch((err) => console.log("change password    --- ", err));
+
+  res.status(200).json("Успешно")
+})
+// --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
@@ -955,7 +1005,7 @@ async function makeDifferente(training_id) {
       attributes: ["client_fio", "client_id"],
       where: { client_id: client.client_id },
     });
-
+    console.log(clientFio, "------------------------- clients-------------------");
     recorded_clients.push(clientFio);
   }
 
@@ -972,7 +1022,6 @@ async function makeDifferente(training_id) {
 
 
 
-  // difference.unshift("Пробник", "Нет регистрации");
   const recordAndDifference = {
     recorded: recorded_clients,
     difference: difference,
@@ -980,54 +1029,7 @@ async function makeDifferente(training_id) {
   return recordAndDifference;
 }
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов----------------------
-// --------------------------------------------------------------отправить Письмо email ---------------------------
-app.get("/send_email", async (req, res) => {
 
-  // const fromHost = `mail.my`;
-  // const from = 'ActivityRestore' + '@' + fromHost; //придумываете свою почту(может быть несуществующая)
-  // const to = 'blakangel57@yandex.ru';
-  // const transport = nodemailer.createTransport(directTransport({
-  //   name: fromHost
-  // }));
-  // transport.sendMail({
-  //   from, to,
-  //   subject: 'Заголовок письма',
-  //   html: `
-  //          <h1>Ваше письмо</h1>
-  //         `
-  // }, (err, data) => {
-  //   if (err) {
-  //     console.error('Ошибка при отправке:', err);
-  //   } else {
-  //     console.log('Письмо отправлено');
-  //   }
-  // });
-
-
-
-// async function sendRestoreMail(email, code) {
-  
-// }
-//   let transporter = nodemailer.createTransport({
-//     service: 'gmail',
-//     auth: {
-//         user: 'i.lukashuk.kodibosh@gmail.com',
-//         pass: 'uizn tisv bvvu rvas',
-//     },
-// });
-
-// let result = await transporter.sendMail({
-//     from: '"Node js" <nodejs@example.com>',
-//     to: email,
-//     subject: 'Message from Node js',
-//     text: 'This message was sent from Node js server.',
-//     html:
-//         'This <i>message</i> was sent from <strong>Node js</strong> server.',
-// });
-
-// console.log(result);
-})
-// --------------------------------------------------------------отправить Письмо email ---------------------------
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
@@ -1227,3 +1229,28 @@ async function getTrainsByDay(date) {
   await trainVisiters(sport)
   return sport  
 }
+
+// --------------------------------- функция отправики email-----------------------
+async function sendRestoreMail(email, code) {
+  
+  console.log(email, code, "функция отправки мыла");
+    let transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+          user: 'i.lukashuk.kodibosh@gmail.com',
+          pass: 'uizn tisv bvvu rvas',
+      },
+  });
+  
+  let result = await transporter.sendMail({
+      from: '"Node js" <nodejs@example.com>',
+      to: email.client_email,
+      subject: 'Message from Node js',
+      text: `This message was sent from Node js server.
+      Код восстановления: ${code}`,
+      // html:
+      //     `This <i>message</i> was sent from <strong>Node js</strong> server.${code}`,
+  });
+
+  }
+  // --------------------------------- функция отправики email-----------------------
