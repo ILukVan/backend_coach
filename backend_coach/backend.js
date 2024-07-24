@@ -1,11 +1,10 @@
-
 const express = require("express"); // получаем модуль express
 const cors = require("cors");
 const dayjs = require("dayjs");
-const nodemailer = require('nodemailer');
-const uuid = require('uuid');
+const nodemailer = require("nodemailer");
+const uuid = require("uuid");
 
-const directTransport = require('nodemailer-direct-transport');
+const directTransport = require("nodemailer-direct-transport");
 require("dayjs/locale/ru");
 dayjs.locale("ru");
 // подключаем bcrypt
@@ -222,8 +221,6 @@ const ActivityTypesTable = sequelize.define("activity_type_table", {
   },
 });
 
-
-
 const ActivityAndClientTable = sequelize.define(
   "activity_and_client_table",
   {},
@@ -261,6 +258,28 @@ sequelize
 app.post("/SignInOrRegistration", async (req, res) => {
   let values = req.body;
 
+  const phoneNumber = values.phone_number;
+async function verifyPhoneNumber(phoneNum) {
+  if (phoneNum) {
+    const lengthPhoneNumber =
+    phoneNum.length - phoneNum.replace(/\d/gm, "").length;
+    const phoneNumberDigit = Number(phoneNum.replace(/[^0-9]/g, ""));
+
+    if (lengthPhoneNumber !== 11 || !Number.isInteger(phoneNumberDigit)) {
+      res.status(406).json("Некорректный номер телефона");
+      console.log("Некорректный номер телефона");
+    } else {
+      return true
+    } 
+  } else {
+    res.status(406).json("Не введен номер телефона");
+    console.log("Не введен номер телефона");
+  }
+  
+}
+  
+if(await verifyPhoneNumber(phoneNumber)) {
+
   const signIn = await ClientTable.findOne({
     raw: true,
     where: { client_phone_number: values.phone_number },
@@ -271,15 +290,31 @@ app.post("/SignInOrRegistration", async (req, res) => {
   } else {
     res.status(200).json("reg");
   }
+}
 });
 // --------------------------------------------------------------регистрация или вход ---------------------------
 // --------------------------------------------------------------вход авторизация---------------------------
 app.post("/signIn", async (req, res) => {
   let values = req.body;
+  console.log(values);
+  const phoneNumber = values.phone_number;
+  const lengthPhoneNumber =
+    phoneNumber.length - phoneNumber.replace(/\d/gm, "").length;
+  const phoneNumberDigit = Number(values.phone_number.replace(/[^0-9]/g, ""));
+
+  if (lengthPhoneNumber !== 11 || !Number.isInteger(phoneNumberDigit)) {
+    res.status(406).json("Ошибка авторизации");
+  }
 
   const signIn2 = await ClientTable.findOne({
     raw: true,
     where: { client_phone_number: values.phone_number },
+  }).catch((err) => {
+    console.log(
+      "----------------------Ошибка авторизации------------------------------- "
+    );
+    console.log(err);
+    res.status(406).json("Ошибка авторизации");
   });
 
   bcrypt.compare(
@@ -303,32 +338,30 @@ app.post("/signIn", async (req, res) => {
 // -------------------------------------------------------------- регистрация---------------------------
 app.post("/registration", async (req, res) => {
   let values = req.body;
- 
-      const nameClientTrim = (values.client_name !== undefined
-        ? values.client_name.trim()
-        : "");
-      const surnameClientTrim = (values.client_surname !== undefined
-        ?  values.client_surname.trim()
-        : "");
-      const patronymicClientTrim = (values.client_patronymic !== undefined
-        ? values.client_patronymic.trim()
-        : "");
 
-      const fioDB =
+  const nameClientTrim =
+    values.client_name !== undefined ? values.client_name.trim() : "";
+  const surnameClientTrim =
+    values.client_surname !== undefined ? values.client_surname.trim() : "";
+  const patronymicClientTrim =
+    values.client_patronymic !== undefined
+      ? values.client_patronymic.trim()
+      : "";
+
+  const fioDB =
     surnameClientTrim +
     " " +
     nameClientTrim +
-    await (patronymicClientTrim !== undefined
+    (await (patronymicClientTrim !== undefined
       ? " " + patronymicClientTrim
-      : "");
+      : ""));
 
-
-        const phoneNumber = values.phone_number
-        const lengthPhoneNumber = phoneNumber.length-phoneNumber.replace(/\d/gm,'').length;
-      if (lengthPhoneNumber !== 11) {
-        res.status(406).json("Ошибка регистрарции");
-      }
-
+  const phoneNumber = values.phone_number;
+  const lengthPhoneNumber =
+    phoneNumber.length - phoneNumber.replace(/\d/gm, "").length;
+  if (lengthPhoneNumber !== 11) {
+    res.status(406).json("Ошибка регистрарции");
+  }
 
   ClientTable.create({
     client_phone_number: values.phone_number,
@@ -384,9 +417,7 @@ app.post("/date_activity", async (req, res) => {
   let values = req.body;
   let dateSelect = dayjs(values.data);
 
-
   if (dayjs.isDayjs(dateSelect)) {
-
     const sport = await ActivityTable.findAll({
       raw: true,
       order: [
@@ -399,7 +430,7 @@ app.post("/date_activity", async (req, res) => {
       },
     });
     addStatusTrain(sport);
-    await trainVisiters(sport)
+    await trainVisiters(sport);
 
     res.status(200).json(sport);
 
@@ -417,7 +448,6 @@ app.get("/workout_list", async (req, res) => {
   });
 
   res.status(200).json(workout);
-
 });
 // --------------------------------------------------------------запрос типов тренировки ----------------------
 // --------------------------------------------------------------запрос всех тренеров ---------------------------
@@ -448,17 +478,16 @@ app.post("/restore_profile", async (req, res) => {
   });
 
   if (email) {
-
     res.status(200).json(email.client_email);
     const randomstring = Math.random().toString(36).slice(-8);
-    await sendRestoreMail(email, randomstring)
+    await sendRestoreMail(email, randomstring);
     await ClientTable.update(
       {
         client_restore: bcrypt.hashSync(randomstring, salt),
       },
       {
         where: {
-          client_id: email.client_id
+          client_id: email.client_id,
         },
       }
     ).catch((err) => console.log("restore profile      --- ", err));
@@ -471,13 +500,12 @@ app.post("/restore_profile", async (req, res) => {
 // --------------------------------------------------------------Восстановление профиля, сверка кода восстановления ---------------------------
 app.post("/verify_code", async (req, res) => {
   let values = req.body;
-  const verifyCode = values.verifyCode.trim()
+  const verifyCode = values.verifyCode.trim();
   const email = await ClientTable.findOne({
     raw: true,
     where: { client_email: values.email },
     attributes: ["client_email", "client_restore"],
   });
-
 
   bcrypt.compare(
     verifyCode,
@@ -501,7 +529,7 @@ app.put("/restore_password", async (req, res) => {
   await ClientTable.update(
     {
       client_password: bcrypt.hashSync(values.client_password, salt),
-      client_restore: null, 
+      client_restore: null,
     },
     {
       where: {
@@ -510,8 +538,8 @@ app.put("/restore_password", async (req, res) => {
     }
   ).catch((err) => console.log("change password    --- ", err));
 
-  res.status(200).json("Успешно")
-})
+  res.status(200).json("Успешно");
+});
 // --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
@@ -560,7 +588,7 @@ app.post("/add_activity", async (req, res) => {
     console.log("-------------------------find Refresh      --- ", err)
   );
 
-   await ActivityTable.create({
+  await ActivityTable.create({
     type_of_training: values.type_of_training,
     occupancy_train: parseInt(values.occupancy_train),
     start_time_train: start_time,
@@ -572,9 +600,11 @@ app.post("/add_activity", async (req, res) => {
     coach_train: await createFIO(foreignId),
   }).catch((err) => console.log(err));
 
-    const sport = await getTrainsByDay(dayjs(values.weekday_train).format("YYYY-MM-DD"))
-    res.status(200).json(sport);
-    console.log("создал тренировку и отправил");
+  const sport = await getTrainsByDay(
+    dayjs(values.weekday_train).format("YYYY-MM-DD")
+  );
+  res.status(200).json(sport);
+  console.log("создал тренировку и отправил");
   if (!req.body) return res.status(400).json("node node");
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
@@ -590,10 +620,9 @@ app.delete("/delete_activity", async (req, res) => {
     individualHooks: true,
   }).catch((err) => console.log(err));
 
-   const sport = await getTrainsByDay(delDate)
-   console.log("=== удалил и отправил тренировки==");
-   res.status(200).json(sport);
-
+  const sport = await getTrainsByDay(delDate);
+  console.log("=== удалил и отправил тренировки==");
+  res.status(200).json(sport);
 });
 // --------------------------------------------------------------удаление тренировки ---------------------------
 // --------------------------------------------------------------изменение тренировки ---------------------------
@@ -617,10 +646,9 @@ app.put("/update_activity", async (req, res) => {
     }
   ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
 
-  const sport = await getTrainsByDay(values.date)
+  const sport = await getTrainsByDay(values.date);
   res.status(200).json(sport);
   console.log("изменил тренировку и отправил");
-
 });
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
@@ -651,9 +679,7 @@ app.get("/client_list", async (req, res) => {
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
-    order: [
-      ["client_fio", "ASC"],
-    ],
+    order: [["client_fio", "ASC"]],
     where: { client_role: "client" },
   });
 
@@ -719,6 +745,30 @@ app.delete("/delete_coach", async (req, res) => {
     .catch((err) => console.log(err));
 });
 // --------------------------------------------------------------удаление тренера ---------------------
+// --------------------------------------------------------------удаление клиента ---------------------------
+app.delete("/delete_client", async (req, res) => {
+  let value = req.body.id;
+
+  await ClientTable.destroy({
+    where: {
+      client_id: value,
+    },
+    individualHooks: true,
+  }).catch((err) => console.log(err));
+
+  await ClientTable.findAll({
+    raw: true,
+    where: {
+      client_role: "client",
+    },
+    order: [["client_fio", "ASC"]],
+  })
+    .then((data) => {
+      res.status(200).json(data);
+    })
+    .catch((err) => console.log(err));
+});
+// --------------------------------------------------------------удаление клиента ---------------------
 
 // --------------------------------------------------------------запись на тренировку---------------------------
 app.post("/sign_up_train", async (req, res) => {
@@ -739,7 +789,7 @@ app.post("/unsign_up_train", async (req, res) => {
   await ActivityAndClientTable.destroy({
     where: {
       client_id: values.client_id,
-      training_id: values.training_id, 
+      training_id: values.training_id,
     },
     individualHooks: true,
   }).catch((err) => console.log(err));
@@ -776,7 +826,7 @@ app.post("/unsign_up_train_coach", async (req, res) => {
   await ActivityAndClientTable.destroy({
     where: {
       client_id: values.client_id,
-      training_id: values.training_id, 
+      training_id: values.training_id,
     },
     individualHooks: true,
   }).catch((err) => console.log(err));
@@ -808,7 +858,6 @@ app.post("/add_workout", (req, res) => {
 app.delete("/delete_workout_activity", async (req, res) => {
   let values = req.body.training_id;
 
-
   await ActivityTypesTable.destroy({
     where: {
       workout_id: values,
@@ -820,7 +869,6 @@ app.delete("/delete_workout_activity", async (req, res) => {
     raw: true,
   })
     .then(async (data) => {
-
       res.status(200).json(data);
     })
     .catch((err) => console.log(err));
@@ -880,15 +928,13 @@ app.post("/profile", async (req, res) => {
 app.post("/visited_trains", async (req, res) => {
   let visited = [];
   let id = req.body;
- 
- 
+
   const visited_trains = await ActivityAndClientTable.findAll({
     raw: true,
     logging: false,
     attributes: ["training_id"],
     where: { client_id: id.client_id },
   });
-
 
   for (const train of visited_trains) {
     const visit_train = await ActivityTable.findOne({
@@ -901,7 +947,6 @@ app.post("/visited_trains", async (req, res) => {
     visited.push(visit_train);
   }
 
-
   res.status(200).json(visited);
 });
 // ---------------------------------------------------------------запрос посещенных тренировок ----------------------
@@ -909,24 +954,22 @@ app.post("/visited_trains", async (req, res) => {
 app.put("/update_profile", async (req, res) => {
   let values = req.body;
 
-  
-      const nameClientTrim = (values.client_name !== null
-        ? values.client_name.trim()
-        : "");
-      const surnameClientTrim = (values.client_surname !== null
-        ?  values.client_surname.trim()
-        : "");
-      const patronymicClientTrim = (values.client_patronymic !== null
-        ? values.client_patronymic.trim()
-        : "");
-      console.log(`|${surnameClientTrim}| |${nameClientTrim}| |${patronymicClientTrim}|`);
-      const fioDB =
+  const nameClientTrim =
+    values.client_name !== null ? values.client_name.trim() : "";
+  const surnameClientTrim =
+    values.client_surname !== null ? values.client_surname.trim() : "";
+  const patronymicClientTrim =
+    values.client_patronymic !== null ? values.client_patronymic.trim() : "";
+  console.log(
+    `|${surnameClientTrim}| |${nameClientTrim}| |${patronymicClientTrim}|`
+  );
+  const fioDB =
     surnameClientTrim +
     " " +
     nameClientTrim +
-    await (values.client_patronymic !== null
+    (await (values.client_patronymic !== null
       ? " " + values.client_patronymic.trim()
-      : "");
+      : ""));
   const updateData = await ClientTable.update(
     {
       client_phone_number: values.client_phone_number,
@@ -984,12 +1027,11 @@ app.put("/update_password", async (req, res) => {
     }
   ).catch((err) => console.log("change password    --- ", err));
 
-  res.status(200).json("Успешно")
-})
+  res.status(200).json("Успешно");
+});
 // --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
-
   let recorded_clients = [];
   const recorded_client = await ActivityAndClientTable.findAll({
     raw: true,
@@ -1005,7 +1047,10 @@ async function makeDifferente(training_id) {
       attributes: ["client_fio", "client_id"],
       where: { client_id: client.client_id },
     });
-    console.log(clientFio, "------------------------- clients-------------------");
+    console.log(
+      clientFio,
+      "------------------------- clients-------------------"
+    );
     recorded_clients.push(clientFio);
   }
 
@@ -1017,10 +1062,12 @@ async function makeDifferente(training_id) {
     order: [["client_fio", "ASC"]],
   });
 
-
-  let difference = clients.filter(person_A => !recorded_clients.some(person_B => person_A.client_id === person_B.client_id));
-
-
+  let difference = clients.filter(
+    (person_A) =>
+      !recorded_clients.some(
+        (person_B) => person_A.client_id === person_B.client_id
+      )
+  );
 
   const recordAndDifference = {
     recorded: recorded_clients,
@@ -1029,7 +1076,55 @@ async function makeDifferente(training_id) {
   return recordAndDifference;
 }
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов----------------------
+// -------------------------------------------------------------- регистрация пробников---------------------------
+app.get("/registration_probnik", async (req, res) => {
+  let currentProbnik = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    where: { client_job: "Пробник" },
+    attributes: ["client_job"],
+  });
 
+  if (currentProbnik.length <= 10) {
+    const num = 2;
+    const newProbnik = currentProbnik.length + num;
+    for (i = currentProbnik.length + 1; i <= newProbnik; i++) {
+      const nomer = i.toString();
+      const kolvo = nomer.length;
+      const probnik = {
+        phone_number: "+7(000)-000-00-00".slice(0, 17 - kolvo) + i,
+        client_password: nomer.repeat(4).slice(0, 4),
+        client_name: "Пробник",
+        client_surname: nomer,
+        client_fio: "Пробник" + " " + i,
+        client_job: "Пробник",
+      };
+
+      ClientTable.create({
+        client_phone_number: probnik.phone_number,
+        client_password: bcrypt.hashSync(probnik.client_password, salt),
+        client_name: probnik.client_name,
+        client_surname: probnik.client_surname,
+        client_fio: probnik.client_fio,
+        client_job: probnik.client_job,
+        client_birthday: dayjs().format("YYYY-MM-DD"),
+      })
+        .then(async (data) => {
+          console.log("Регистрация успешна");
+        })
+        .catch((err) => {
+          console.log(
+            "----------------------Ошибка регистарции------------------------------- "
+          );
+          console.log(err);
+        });
+    }
+    res.status(200).json("Пробник создан");
+  } else {
+    res.status(400).json("Предельное количество пробных профилей");
+  }
+});
+// --------------------------------------------------------------регистрация---------------------------
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
@@ -1037,7 +1132,6 @@ app.listen(3500, function () {
 
 async function generateAccessToken(user) {
   const payload = {
-    
     id: user.client_id,
     name: await createFIO(user.client_id),
     role: user.client_role,
@@ -1173,14 +1267,12 @@ function addStatusTrain(trains) {
       element.end_time_train
     );
     element.status_train = statusTrain;
-    element.recorded_client = []
+    element.recorded_client = [];
   });
-
 }
 // ------------------------------------функция добавления статуса тренировки к тренировкам -----------------------------------------
 // ------------------------------------функция добавления записанных клиентов к тренировкам -----------------------------------------
 async function trainVisiters(trains) {
-
   for (const train of trains) {
     const train_visiters = await ActivityAndClientTable.findAll({
       raw: true,
@@ -1196,10 +1288,10 @@ async function trainVisiters(trains) {
         attributes: ["client_id"],
         where: { client_id: client.client_id },
       });
-      train.recorded_client.push(fioForTrain.client_id)
+      train.recorded_client.push(fioForTrain.client_id);
     }
   }
-}  
+}
 // ------------------------------------функция добавления записанных клиентов к тренировкам -----------------------------------------
 async function createFIO(id) {
   const user = await ClientTable.findOne({
@@ -1226,31 +1318,29 @@ async function getTrainsByDay(date) {
     },
   });
   addStatusTrain(sport);
-  await trainVisiters(sport)
-  return sport  
+  await trainVisiters(sport);
+  return sport;
 }
 
 // --------------------------------- функция отправики email-----------------------
 async function sendRestoreMail(email, code) {
-  
   console.log(email, code, "функция отправки мыла");
-    let transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-          user: 'i.lukashuk.kodibosh@gmail.com',
-          pass: 'uizn tisv bvvu rvas',
-      },
-  });
-  
-  let result = await transporter.sendMail({
-      from: '"Node js" <nodejs@example.com>',
-      to: email.client_email,
-      subject: 'Message from Node js',
-      text: `This message was sent from Node js server.
-      Код восстановления: ${code}`,
-      // html:
-      //     `This <i>message</i> was sent from <strong>Node js</strong> server.${code}`,
+  let transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "i.lukashuk.kodibosh@gmail.com",
+      pass: "uizn tisv bvvu rvas",
+    },
   });
 
-  }
-  // --------------------------------- функция отправики email-----------------------
+  let result = await transporter.sendMail({
+    from: '"Node js" <nodejs@example.com>',
+    to: email.client_email,
+    subject: "Message from Node js",
+    text: `This message was sent from Node js server.
+      Код восстановления: ${code}`,
+    // html:
+    //     `This <i>message</i> was sent from <strong>Node js</strong> server.${code}`,
+  });
+}
+// --------------------------------- функция отправики email-----------------------
