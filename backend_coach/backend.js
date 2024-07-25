@@ -120,6 +120,7 @@ const ClientTable = sequelize.define("client_table", {
   },
   client_email: {
     type: Sequelize.STRING,
+    unique: true,
   },
   client_role: {
     type: Sequelize.STRING,
@@ -259,138 +260,132 @@ app.post("/SignInOrRegistration", async (req, res) => {
   let values = req.body;
 
   const phoneNumber = values.phone_number;
-async function verifyPhoneNumber(phoneNum) {
-  if (phoneNum) {
-    const lengthPhoneNumber =
-    phoneNum.length - phoneNum.replace(/\d/gm, "").length;
-    const phoneNumberDigit = Number(phoneNum.replace(/[^0-9]/g, ""));
+  if (await verifyPhoneNumber(phoneNumber)) {
+    const signIn = await ClientTable.findOne({
+      raw: true,
+      where: { client_phone_number: values.phone_number },
+    });
 
-    if (lengthPhoneNumber !== 11 || !Number.isInteger(phoneNumberDigit)) {
-      res.status(406).json("Некорректный номер телефона");
-      console.log("Некорректный номер телефона");
+    if (signIn) {
+      res.status(200).json("sign");
     } else {
-      return true
-    } 
+      res.status(200).json("reg");
+    }
   } else {
-    res.status(406).json("Не введен номер телефона");
-    console.log("Не введен номер телефона");
+    res.status(406).json("Некорректный номер телефона");
   }
-  
-}
-  
-if(await verifyPhoneNumber(phoneNumber)) {
-
-  const signIn = await ClientTable.findOne({
-    raw: true,
-    where: { client_phone_number: values.phone_number },
-  });
-
-  if (signIn) {
-    res.status(200).json("sign");
-  } else {
-    res.status(200).json("reg");
-  }
-}
 });
 // --------------------------------------------------------------регистрация или вход ---------------------------
 // --------------------------------------------------------------вход авторизация---------------------------
 app.post("/signIn", async (req, res) => {
   let values = req.body;
-  console.log(values);
   const phoneNumber = values.phone_number;
-  const lengthPhoneNumber =
-    phoneNumber.length - phoneNumber.replace(/\d/gm, "").length;
-  const phoneNumberDigit = Number(values.phone_number.replace(/[^0-9]/g, ""));
 
-  if (lengthPhoneNumber !== 11 || !Number.isInteger(phoneNumberDigit)) {
-    res.status(406).json("Ошибка авторизации");
-  }
+  if (await verifyPhoneNumber(phoneNumber)) {
+    const signIn2 = await ClientTable.findOne({
+      raw: true,
+      where: { client_phone_number: values.phone_number },
+    }).catch((err) => {
+      console.log(
+        "----------------------Ошибка авторизации------------------------------- "
+      );
+      console.log(err);
+      res.status(406).json("Ошибка авторизации");
+    });
 
-  const signIn2 = await ClientTable.findOne({
-    raw: true,
-    where: { client_phone_number: values.phone_number },
-  }).catch((err) => {
-    console.log(
-      "----------------------Ошибка авторизации------------------------------- "
-    );
-    console.log(err);
-    res.status(406).json("Ошибка авторизации");
-  });
+    bcrypt.compare(
+      values.password,
+      signIn2.client_password,
+      async function (error, result) {
+        if (result) {
+          // авторизируем юзера
+          const result = await generateFreshforDB(signIn2);
+          console.log("вход выполнен");
 
-  bcrypt.compare(
-    values.password,
-    signIn2.client_password,
-    async function (error, result) {
-      if (result) {
-        // авторизируем юзера
-        const result = await generateFreshforDB(signIn2);
-        console.log("вход выполнен");
-
-        res.status(200).json(result);
-      } else {
-        console.log(error);
-        res.status(403).json("Неверный пароль");
+          res.status(200).json(result);
+        } else {
+          console.log(error);
+          res.status(403).json("Неверный пароль");
+        }
       }
-    }
-  );
+    );
+  } else {
+    res.status(406).json("Некорректный номер телефона");
+  }
 });
 // --------------------------------------------------------------вход авторизация---------------------------
+
 // -------------------------------------------------------------- регистрация---------------------------
 app.post("/registration", async (req, res) => {
   let values = req.body;
 
-  const nameClientTrim =
-    values.client_name !== undefined ? values.client_name.trim() : "";
-  const surnameClientTrim =
-    values.client_surname !== undefined ? values.client_surname.trim() : "";
-  const patronymicClientTrim =
-    values.client_patronymic !== undefined
-      ? values.client_patronymic.trim()
-      : "";
-
-  const fioDB =
-    surnameClientTrim +
-    " " +
-    nameClientTrim +
-    (await (patronymicClientTrim !== undefined
-      ? " " + patronymicClientTrim
-      : ""));
-
   const phoneNumber = values.phone_number;
-  const lengthPhoneNumber =
-    phoneNumber.length - phoneNumber.replace(/\d/gm, "").length;
-  if (lengthPhoneNumber !== 11) {
-    res.status(406).json("Ошибка регистрарции");
-  }
+  if (await verifyPhoneNumber(phoneNumber)) {
+    const nameClientTrim =
+      values.client_name !== undefined
+        ? values.client_name.replace(/[^\p{L}]/gu, "").trim()
+        : "";
+    const surnameClientTrim =
+      values.client_surname !== undefined
+        ? values.client_surname.replace(/[^\p{L}]/gu, "").trim()
+        : "";
+    const patronymicClientTrim =
+      values.client_patronymic !== undefined
+        ? values.client_patronymic.replace(/[^\p{L}]/gu, "").trim()
+        : "";
 
-  ClientTable.create({
-    client_phone_number: values.phone_number,
-    client_password: bcrypt.hashSync(values.client_password, salt),
-    client_name: values.client_name.trim(),
-    client_patronymic: values.client_patronymic,
-    client_surname: values.client_surname.trim(),
-    client_fio: fioDB,
-    client_email: values.client_email,
-    client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
-    client_job: values.client_job,
-    client_illness: values.client_illness,
-    client_messenger: (values.client_messenger || []).join() || "noMessengers",
-  })
-    .then(async (data) => {
-      console.log("Регистрация успешна");
-      const user = data.dataValues;
+    const fioDB =
+      surnameClientTrim +
+      " " +
+      nameClientTrim +
+      (await (patronymicClientTrim !== undefined
+        ? " " + patronymicClientTrim
+        : ""));
 
-      const result = await generateFreshforDB(user);
-
-      res.status(200).json(result);
-    })
-    .catch((err) => {
-      console.log(
-        "----------------------Ошибка регистарции------------------------------- "
-      );
-      console.log(err);
-      res.status(406).json("Ошибка регистрарции");
+    const email_client = await ClientTable.findOne({
+      raw: true,
+      where: { client_email: values.Email || null },
+      attributes: ["client_email"],
     });
+
+    if (email_client?.client_email !== values.Email) {
+      ClientTable.create({
+        client_phone_number: values.phone_number,
+        client_password: bcrypt.hashSync(values.client_password, salt),
+        client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
+        client_patronymic: patronymicClientTrim,
+        client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
+        client_fio: fioDB,
+        client_email: values.Email,
+        client_job: values.client_job,
+        client_illness: values.client_illness,
+        client_messenger:
+          (values.client_messenger || []).join() || "noMessengers",
+      })
+        .then(async (data) => {
+          console.log("Регистрация успешна");
+          const user = data.dataValues;
+
+          const result = await generateFreshforDB(user);
+
+          res.status(200).json(result);
+        })
+        .catch((err) => {
+          console.log(
+            "----------------------Ошибка регистарции------------------------------- "
+          );
+          console.log(err);
+          res
+            .status(406)
+            .json("Не удалось зарегистрировать. Проверьте корректность данных");
+        });
+    } else {
+      console.log("Email занят");
+      res.status(406).json("Email занят");
+    }
+  } else {
+    res.status(406).json("Некорректный номер телефона");
+  }
 });
 // --------------------------------------------------------------регистрация---------------------------
 
@@ -953,13 +948,19 @@ app.post("/visited_trains", async (req, res) => {
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 app.put("/update_profile", async (req, res) => {
   let values = req.body;
-
+  console.log(values, "-------данные на изменение-----");
   const nameClientTrim =
-    values.client_name !== null ? values.client_name.trim() : "";
+    values.client_name !== null
+      ? values.client_name.replace(/[^\p{L}]/gu, "").trim()
+      : "";
   const surnameClientTrim =
-    values.client_surname !== null ? values.client_surname.trim() : "";
+    values.client_surname !== null
+      ? values.client_surname.replace(/[^\p{L}]/gu, "").trim()
+      : "";
   const patronymicClientTrim =
-    values.client_patronymic !== null ? values.client_patronymic.trim() : "";
+    values.client_patronymic !== null
+      ? values.client_patronymic.replace(/[^\p{L}]/gu, "").trim()
+      : "";
   console.log(
     `|${surnameClientTrim}| |${nameClientTrim}| |${patronymicClientTrim}|`
   );
@@ -968,66 +969,134 @@ app.put("/update_profile", async (req, res) => {
     " " +
     nameClientTrim +
     (await (values.client_patronymic !== null
-      ? " " + values.client_patronymic.trim()
+      ? " " + values.client_patronymic.replace(/[^\p{L}]/gu, "").trim()
       : ""));
-  const updateData = await ClientTable.update(
-    {
-      client_phone_number: values.client_phone_number,
-      client_name: values.client_name.trim(),
-      client_patronymic: values.client_patronymic,
-      client_surname: values.client_surname.trim(),
-      client_birthday: dayjs(values.client_birthday).format("YYYY-MM-DD"),
-      client_fio: fioDB,
-      client_email: values.client_email,
-      client_job: values.client_job,
-      client_illness: values.client_illness,
-    },
-    {
-      where: {
-        client_id: values.client_id,
-      },
-    }
-  ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
 
-  const clientProfile = await ClientTable.findOne({
+  const userBefore = await ClientTable.findOne({
     raw: true,
     logging: false,
-    attributes: [
-      "client_phone_number",
-      "client_name",
-      "client_patronymic",
-      "client_surname",
-      "client_fio",
-      "client_birthday",
-      "client_email",
-      "client_registration_date",
-      "client_job",
-      "client_illness",
-      "client_messenger",
-    ],
+    attributes: ["client_phone_number", "client_email"],
     where: { client_id: values.client_id },
   });
 
-  res.status(200).json(clientProfile);
+  const reservedEmail = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_email"],
+    where: { client_email: values.client_email },
+  });
+
+  const reservedNumberPhone = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_phone_number"],
+    where: { client_phone_number: values.client_phone_number },
+  });
+
+console.log(reservedNumberPhone, "номер телефона");
+console.log(reservedNumberPhone.client_phone_number !== userBefore.client_phone_number);
+console.log(values.client_phone_number === reservedNumberPhone.client_phone_number);
+  if (reservedNumberPhone.client_phone_number !== userBefore.client_phone_number || values.client_phone_number === reservedNumberPhone.client_phone_number) {
+    res.status(406).json("Номер уже зарегистрирован");
+  } else if (reservedEmail !== userBefore.client_email || values.client_email === reservedEmail) {
+    res.status(406).json("Email уже зарегистрирован");
+  } else {
+
+    const updateData = await ClientTable.update(
+      {
+        client_phone_number: values.client_phone_number,
+        client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
+        client_patronymic: values.client_patronymic
+          .replace(/[^\p{L}]/gu, "")
+          .trim(),
+        client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
+        client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
+        client_fio: fioDB,
+        client_email: values.client_email,
+        client_job: values.client_job,
+        client_illness: values.client_illness,
+      },
+      {
+        where: {
+          client_id: values.client_id,
+        },
+      }
+    ).catch((err) => {
+      // console.log("ediiiiiiiiit      --- ", err)
+      console.log("Произошла ошибка обновления данных");
+      res.status(406).json("Произошла ошибка обновления данных");
+    });
+  
+    const clientProfile = await ClientTable.findOne({
+      raw: true,
+      logging: false,
+      attributes: [
+        "client_phone_number",
+        "client_name",
+        "client_patronymic",
+        "client_surname",
+        "client_fio",
+        "client_birthday",
+        "client_email",
+        "client_registration_date",
+        "client_job",
+        "client_illness",
+        "client_messenger",
+      ],
+      where: { client_id: values.client_id },
+    });
+  
+    res.status(200).json(clientProfile);
+
+  }
+
+
 });
 
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 // --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
 app.put("/update_password", async (req, res) => {
   let values = req.body;
+  console.log(values, "--------------------old new pass");
 
-  await ClientTable.update(
-    {
-      client_password: bcrypt.hashSync(values.client_password, salt),
-    },
-    {
-      where: {
-        client_id: values.client_id,
-      },
+  const oldPassword = await ClientTable.findOne({
+    raw: true,
+    where: { client_id: values.client_id },
+    attributes: ["client_password"],
+  }).catch((err) => {
+    console.log(
+      "----------------------Ошибка изменения пароля ------------------------------- "
+    );
+    console.log(err);
+    res.status(406).json("Ошибка изменения пароля");
+  });
+  console.log(values.client_password, "новый пароль");
+  console.log(oldPassword.client_password, "страый пароль");
+  bcrypt.compare(
+    values.old_client_password,
+    oldPassword.client_password,
+    async function (error, result) {
+      console.log(result);
+      console.log(error);
+      if (result) {
+        await ClientTable.update(
+          {
+            client_password: bcrypt.hashSync(values.client_password, salt),
+          },
+          {
+            where: {
+              client_id: values.client_id,
+            },
+          }
+        ).catch((err) => console.log("change password    --- ", err));
+        console.log("Пароль успешно обновлен");
+        res.status(200).json("Успешно");
+      } else {
+        console.log(error);
+        res.status(403).json("Неверный пароль");
+      }
     }
-  ).catch((err) => console.log("change password    --- ", err));
-
-  res.status(200).json("Успешно");
+  );
 });
 // --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
@@ -1124,7 +1193,7 @@ app.get("/registration_probnik", async (req, res) => {
     res.status(400).json("Предельное количество пробных профилей");
   }
 });
-// --------------------------------------------------------------регистрация---------------------------
+// --------------------------------------------------------------регистрация пробников---------------------------
 // начинаем прослушивание подключений на 3000 порту
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
@@ -1133,7 +1202,7 @@ app.listen(3500, function () {
 async function generateAccessToken(user) {
   const payload = {
     id: user.client_id,
-    name: await createFIO(user.client_id),
+    name: user.client_fio,
     role: user.client_role,
   };
 
@@ -1253,7 +1322,7 @@ function setStatusTrain(start, end) {
   if (dayjs() > dayjs(end)) {
     return "тренировка завершена";
   } else if (dayjs() < dayjs(start)) {
-    return "тренировка запланирова";
+    return "тренировка запланирована";
   } else {
     return "тренировка в процессе";
   }
@@ -1298,11 +1367,8 @@ async function createFIO(id) {
     raw: true,
     where: { client_id: id },
   });
-  const fioFunc = `${user.client_surname} ${user.client_name} ${
-    user.client_patronymic ?? ""
-  } `.trim();
-  const fio = fioFunc.replace(/ +/g, " ").trim();
-  return fio;
+
+  return user.client_fio;
 }
 
 async function getTrainsByDay(date) {
@@ -1344,3 +1410,22 @@ async function sendRestoreMail(email, code) {
   });
 }
 // --------------------------------- функция отправики email-----------------------
+// -------------------------------- функция проверки и валидации номера телефона ------------------------------------
+async function verifyPhoneNumber(phoneNum) {
+  if (phoneNum) {
+    const lengthPhoneNumber =
+      phoneNum.length - phoneNum.replace(/\d/gm, "").length;
+    const phoneNumberDigit = Number(phoneNum.replace(/[^0-9]/g, ""));
+
+    if (lengthPhoneNumber !== 11 || !Number.isInteger(phoneNumberDigit)) {
+      console.log("Некорректный номер телефона");
+      return false;
+    } else {
+      return true;
+    }
+  } else {
+    console.log("Не введен номер телефона");
+    return false;
+  }
+}
+// -------------------------------- функция проверки и валидации номера телефона ------------------------------------
