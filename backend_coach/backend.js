@@ -948,7 +948,7 @@ app.post("/visited_trains", async (req, res) => {
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 app.put("/update_profile", async (req, res) => {
   let values = req.body;
-  console.log(values, "-------данные на изменение-----");
+
   const nameClientTrim =
     values.client_name !== null
       ? values.client_name.replace(/[^\p{L}]/gu, "").trim()
@@ -961,9 +961,7 @@ app.put("/update_profile", async (req, res) => {
     values.client_patronymic !== null
       ? values.client_patronymic.replace(/[^\p{L}]/gu, "").trim()
       : "";
-  console.log(
-    `|${surnameClientTrim}| |${nameClientTrim}| |${patronymicClientTrim}|`
-  );
+
   const fioDB =
     surnameClientTrim +
     " " +
@@ -972,83 +970,120 @@ app.put("/update_profile", async (req, res) => {
       ? " " + values.client_patronymic.replace(/[^\p{L}]/gu, "").trim()
       : ""));
 
-  const userBefore = await ClientTable.findOne({
-    raw: true,
-    logging: false,
-    attributes: ["client_phone_number", "client_email"],
-    where: { client_id: values.client_id },
-  });
-
   const reservedEmail = await ClientTable.findOne({
     raw: true,
     logging: false,
-    attributes: ["client_email"],
+    attributes: ["client_email", 'client_id'],
     where: { client_email: values.client_email },
   });
-
   const reservedNumberPhone = await ClientTable.findOne({
     raw: true,
     logging: false,
-    attributes: ["client_phone_number"],
+    attributes: ["client_phone_number",  'client_id'],
     where: { client_phone_number: values.client_phone_number },
   });
 
-console.log(reservedNumberPhone, "номер телефона");
-console.log(reservedNumberPhone.client_phone_number !== userBefore.client_phone_number);
-console.log(values.client_phone_number === reservedNumberPhone.client_phone_number);
-  if (reservedNumberPhone.client_phone_number !== userBefore.client_phone_number || values.client_phone_number === reservedNumberPhone.client_phone_number) {
-    res.status(406).json("Номер уже зарегистрирован");
-  } else if (reservedEmail !== userBefore.client_email || values.client_email === reservedEmail) {
-    res.status(406).json("Email уже зарегистрирован");
+  let uniquePhoneNumber 
+  if (!reservedNumberPhone) {
+    uniquePhoneNumber = true
+  } else if (reservedNumberPhone.client_id === values.client_id){
+    uniquePhoneNumber = true
   } else {
+    uniquePhoneNumber = false
+  }
 
-    const updateData = await ClientTable.update(
-      {
-        client_phone_number: values.client_phone_number,
-        client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
-        client_patronymic: values.client_patronymic
-          .replace(/[^\p{L}]/gu, "")
-          .trim(),
-        client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
-        client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
-        client_fio: fioDB,
-        client_email: values.client_email,
-        client_job: values.client_job,
-        client_illness: values.client_illness,
-      },
-      {
-        where: {
-          client_id: values.client_id,
-        },
-      }
-    ).catch((err) => {
-      // console.log("ediiiiiiiiit      --- ", err)
-      console.log("Произошла ошибка обновления данных");
-      res.status(406).json("Произошла ошибка обновления данных");
-    });
-  
-    const clientProfile = await ClientTable.findOne({
+
+console.log(values.client_email );
+console.log(reservedEmail);
+  let uniqueEmail
+  if (!reservedEmail) {
+    console.log("мыло нуленое", reservedEmail);
+    uniqueEmail = true
+  } else if (values.client_email === ""){
+    console.log("удалил мыло из профиля");
+    uniqueEmail = true
+  } else if (values.client_email === null){
+    console.log("мыло из профиля null");
+    uniqueEmail = true
+  } else if (reservedEmail.client_id === values.client_id){
+    console.log("мыло принадлежит изменяющему");
+    uniqueEmail = true
+  } else {
+    uniqueEmail = false
+  }
+
+  async function coachJob(id) {
+    const job = await ClientTable.findOne({
       raw: true,
       logging: false,
-      attributes: [
-        "client_phone_number",
-        "client_name",
-        "client_patronymic",
-        "client_surname",
-        "client_fio",
-        "client_birthday",
-        "client_email",
-        "client_registration_date",
-        "client_job",
-        "client_illness",
-        "client_messenger",
-      ],
-      where: { client_id: values.client_id },
+      attributes: ["client_role"],
+      where: { client_id: id.client_id },
     });
-  
-    res.status(200).json(clientProfile);
-
+    
+    if (job.client_role === "coach" || job.client_role === "super_coach") {
+      return "тренер студии"
+    } else {
+      return id.client_job.replace("тренер студии", "тренер")
+    }
   }
+
+  if (!uniquePhoneNumber) {
+    console.log("Номер уже зарегистрирован");
+    res.status(406).json("Номер уже зарегистрирован");
+  } else if (!uniqueEmail) {
+    console.log("Email уже зарегистрирован");
+    res.status(406).json("Email уже зарегистрирован");
+  } else {
+   await ClientTable.update(
+    {
+      client_phone_number: values.client_phone_number,
+      client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
+      client_patronymic: patronymicClientTrim,
+      client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
+      client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
+      client_fio: fioDB,
+      client_email: values.client_email,
+      client_job: await coachJob(values) ,
+      client_illness: values.client_illness,
+    },
+    {
+      where: {
+        client_id: values.client_id,
+      },
+    }
+  ).catch((err) => {
+    // console.log("ediiiiiiiiit      --- ", err)
+    console.log("Произошла ошибка обновления данных");
+    res.status(406).json("Произошла ошибка обновления данных");
+  });
+
+  const clientProfile = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: [
+      "client_phone_number",
+      "client_name",
+      "client_patronymic",
+      "client_surname",
+      "client_fio",
+      "client_birthday",
+      "client_email",
+      "client_registration_date",
+      "client_job",
+      "client_illness",
+      "client_messenger",
+    ],
+    where: { client_id: values.client_id },
+  });
+
+  res.status(200).json(clientProfile);
+
+
+}
+
+  
+
+  
 
 
 });
@@ -1207,7 +1242,7 @@ async function generateAccessToken(user) {
   };
 
   const secret = "ivan";
-  const options = { expiresIn: "10s" };
+  const options = { expiresIn: "5m" };
 
   return jwt.sign(payload, secret, options);
 }
