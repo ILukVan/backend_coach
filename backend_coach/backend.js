@@ -21,7 +21,7 @@ app.use(express.json());
 const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize("coach_client", "ivan", "qwerty", {
-  // host: '192.168.3.18',
+  host: '192.168.3.16',
   dialect: "postgres",
   logging: false,
 });
@@ -347,8 +347,10 @@ app.post("/registration", async (req, res) => {
       where: { client_email: values.Email || null },
       attributes: ["client_email"],
     });
-
-    if (email_client?.client_email !== values.Email) {
+    console.log(values, " пришли от клиента ----------------")
+    console.log(email_client?.client_email, " пришли от базы ----------------")
+    console.log(values, " пришли от клиента ----------------")
+    if (email_client?.client_email !== values.Email || values.Email===undefined) {
       ClientTable.create({
         client_phone_number: values.phone_number,
         client_password: bcrypt.hashSync(values.client_password, salt),
@@ -557,7 +559,7 @@ app.use(async function (req, res, next) {
     // next();
   } else {
     console.log("Третий этап");
-    res.sendStatus(403);
+    res.status(403).json("необходим перелогин");
   }
 });
 // ----------------------------------------------------------- прослойка для аутентификации----------------
