@@ -21,7 +21,7 @@ app.use(express.json());
 const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize("coach_client", "ivan", "qwerty", {
-  host: '192.168.3.16',
+  // host: '192.168.3.16',
   dialect: "postgres",
   logging: false,
 });
@@ -358,6 +358,7 @@ app.post("/registration", async (req, res) => {
         client_patronymic: patronymicClientTrim,
         client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
         client_fio: fioDB,
+        client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
         client_email: values.Email,
         client_job: values.client_job,
         client_illness: values.client_illness,
@@ -1015,6 +1016,7 @@ console.log(reservedEmail);
   }
 
   async function coachJob(id) {
+    console.log(id, "что ломает и почему профессия");
     const job = await ClientTable.findOne({
       raw: true,
       logging: false,
@@ -1045,7 +1047,7 @@ console.log(reservedEmail);
       client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
       client_fio: fioDB,
       client_email: values.client_email,
-      client_job: await coachJob(values) ,
+      client_job: values.client_job ? await coachJob(values) : null ,
       client_illness: values.client_illness,
     },
     {
@@ -1317,7 +1319,7 @@ async function generateFreshforDB(user) {
 async function refreshRefreshTokenDB(reToken) {
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
-
+console.log(user, "------refreshRefreshTokenDB");
   if (reToken === user.refresh_key_client) {
     return await generateFreshforDB(user);
   }
