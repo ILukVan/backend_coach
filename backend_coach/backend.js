@@ -568,7 +568,26 @@ app.use(async function (req, res, next) {
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/add_activity", async (req, res) => {
   let values = req.body;
-
+  // console.log(values);
+  let flagParams = true
+  for (let params in values){
+    // console.log(values[params]);
+    if(values[params] === null){
+      console.log(values[params]);
+      flagParams = false
+      break
+    }
+  }
+  if (!flagParams) {
+    console.log("Некореектные данные тренировки");
+    res.status(404).json("Проверьте данные тренировки")
+  } else if (!dayjs(values.start_time_train).isValid() || !dayjs(values.end_time_train).isValid()) {
+    console.log("Некорректное время")
+    res.status(404).json("Проверьте данные тренировки")
+  } else if (dayjs(values.start_time_train).add(15, "minute" ) < dayjs(values.end_time_train)) {
+    console.log("Некорректное время старт<конца")
+    res.status(404).json("Проверьте данные тренировки")
+  } else {
   let start_time =
     dayjs(values.weekday_train).format("YYYY-MM-DD") +
     " " +
@@ -604,6 +623,7 @@ app.post("/add_activity", async (req, res) => {
   res.status(200).json(sport);
   console.log("создал тренировку и отправил");
   if (!req.body) return res.status(400).json("node node");
+} 
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
 // --------------------------------------------------------------удаление тренировки ---------------------------
@@ -627,6 +647,25 @@ app.delete("/delete_activity", async (req, res) => {
 app.put("/update_activity", async (req, res) => {
   let values = req.body;
 
+  let flagParams = true
+  for (let params in values){
+    // console.log(values[params]);
+    if(values[params] === null){
+      console.log(values[params]);
+      flagParams = false
+      break
+    }
+  }
+  if (!flagParams) {
+    console.log("Некореектные данные тренировки");
+    res.status(404).json("Проверьте данные тренировки")
+  } else if (!dayjs(values.start_time_train).isValid() || !dayjs(values.end_time_train).isValid()) {
+    console.log("Некорректное время")
+    res.status(404).json("Проверьте данные тренировки")
+  } else if (dayjs(values.start_time_train).add(15, "minute" ) < dayjs(values.end_time_train)) {
+    console.log("Некорректное время старт<конца")
+    res.status(404).json("Проверьте данные тренировки")
+  } else {
   await ActivityTable.update(
     {
       type_of_training: values.type_of_training,
@@ -647,6 +686,7 @@ app.put("/update_activity", async (req, res) => {
   const sport = await getTrainsByDay(values.date);
   res.status(200).json(sport);
   console.log("изменил тренировку и отправил");
+} 
 });
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
@@ -1037,7 +1077,11 @@ console.log(reservedEmail);
   } else if (!uniqueEmail) {
     console.log("Email уже зарегистрирован");
     res.status(406).json("Email уже зарегистрирован");
-  } else {
+  } else if (!dayjs(values.client_birthday).isValid()) {
+    console.log("Некорректная дата");
+    res.status(406).json("Некорректная дата");
+  } 
+  else {
    await ClientTable.update(
     {
       client_phone_number: values.client_phone_number,
@@ -1319,7 +1363,7 @@ async function generateFreshforDB(user) {
 async function refreshRefreshTokenDB(reToken) {
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
-console.log(user, "------refreshRefreshTokenDB");
+
   if (reToken === user.refresh_key_client) {
     return await generateFreshforDB(user);
   }
