@@ -584,7 +584,7 @@ app.post("/add_activity", async (req, res) => {
   } else if (!dayjs(values.start_time_train).isValid() || !dayjs(values.end_time_train).isValid()) {
     console.log("Некорректное время")
     res.status(404).json("Проверьте данные тренировки")
-  } else if (dayjs(values.start_time_train).add(15, "minute" ) < dayjs(values.end_time_train)) {
+  } else if (dayjs(values.start_time_train).add(15, "minute" ) > dayjs(values.end_time_train)) {
     console.log("Некорректное время старт<конца")
     res.status(404).json("Проверьте данные тренировки")
   } else {
@@ -662,7 +662,7 @@ app.put("/update_activity", async (req, res) => {
   } else if (!dayjs(values.start_time_train).isValid() || !dayjs(values.end_time_train).isValid()) {
     console.log("Некорректное время")
     res.status(404).json("Проверьте данные тренировки")
-  } else if (dayjs(values.start_time_train).add(15, "minute" ) < dayjs(values.end_time_train)) {
+  } else if (dayjs(values.start_time_train).add(15, "minute" ) > dayjs(values.end_time_train)) {
     console.log("Некорректное время старт<конца")
     res.status(404).json("Проверьте данные тренировки")
   } else {
@@ -880,8 +880,8 @@ app.post("/add_workout", (req, res) => {
   let values = req.body;
 
   ActivityTypesTable.create({
-    type_of_workout: values.type_of_workout,
-    description_of_workout: values.description_of_workout,
+    type_of_workout: values.type_of_workout.trim(),
+    description_of_workout: values.description_of_workout.trim(),
     client_id: foreignId,
   })
     .then((data) => {
@@ -917,8 +917,8 @@ app.put("/update_workout", async (req, res) => {
   let values = req.body;
   await ActivityTypesTable.update(
     {
-      type_of_workout: values.type_of_workout,
-      description_of_workout: values.description_of_workout,
+      type_of_workout: values.type_of_workout.trim(),
+      description_of_workout: values.description_of_workout.trim(),
     },
     {
       where: {
