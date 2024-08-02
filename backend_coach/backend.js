@@ -360,7 +360,7 @@ app.post("/registration", async (req, res) => {
         client_fio: fioDB,
         client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
         client_email: values.Email,
-        client_job: values.client_job,
+        client_job: values.client_job.replace("тренер студии", "тренер"),
         client_illness: values.client_illness,
         client_messenger:
           (values.client_messenger || []).join() || "noMessengers",
