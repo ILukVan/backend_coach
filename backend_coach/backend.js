@@ -1077,9 +1077,9 @@ console.log(reservedEmail);
   } else if (!uniqueEmail) {
     console.log("Email уже зарегистрирован");
     res.status(406).json("Email уже зарегистрирован");
-  } else if (!dayjs(values.client_birthday).isValid()) {
-    console.log("Некорректная дата");
-    res.status(406).json("Некорректная дата");
+  // } else if (!dayjs(values.client_birthday).isValid() && ) {
+  //   console.log("Некорректная дата");
+  //   res.status(406).json("Некорректная дата");
   } 
   else {
    await ClientTable.update(
@@ -1088,7 +1088,7 @@ console.log(reservedEmail);
       client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
       client_patronymic: patronymicClientTrim,
       client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
-      client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
+      client_birthday: dayjs(values.client_birthday).isValid() && dayjs(values.client_birthday).format("YYYY-MM-DD"),
       client_fio: fioDB,
       client_email: values.client_email,
       client_job: values.client_job ? await coachJob(values) : null ,
