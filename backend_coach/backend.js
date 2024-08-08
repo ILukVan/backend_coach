@@ -22,7 +22,7 @@ app.use(express.json());
 const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize(process.env.DataBase, process.env.userDB, process.env.passwordDB, {
-  // host: '192.168.3.16',
+  host: '192.168.3.18',
   dialect: "postgres",
   logging: false,
 });
@@ -543,8 +543,8 @@ app.put("/api/restore_password", async (req, res) => {
 // --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
-  console.log(req.get("Authorization").replace("Bearer ", ""), typeof(req.get("Authorization").replace("Bearer ", "")), "заголовок с токенами")
-  console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
+  // console.log(req.get("Authorization").replace("Bearer ", ""), typeof(req.get("Authorization").replace("Bearer ", "")), "заголовок с токенами")
+  // console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
   if (!tokens) {
@@ -1282,7 +1282,7 @@ app.get("/api/registration_probnik", async (req, res) => {
 });
 // --------------------------------------------------------------регистрация пробников---------------------------
 // начинаем прослушивание подключений на 3000 порту
-console.log(process.env.DataBase)
+
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
@@ -1325,7 +1325,7 @@ function verifyRefreshToken(token) {
 
 
   try {
-    const decoded = jwt.verify(token, secretJWTrefresh);
+    const decoded = jwt.verify(token, process.env.secretJWTrefresh);
     return { success: true, data: decoded };
   } catch (error) {
     return { success: false, error: error.message };
@@ -1366,7 +1366,7 @@ async function generateFreshforDB(user) {
 }
 
 async function refreshRefreshTokenDB(reToken) {
-  console.log(reToken, "----------------retoken----------")
+
   let reId = await verifyRefreshToken(reToken).data.id;
 
   let user = await findRefreshInDB(reId);
@@ -1376,6 +1376,7 @@ async function refreshRefreshTokenDB(reToken) {
   }
 }
 async function findRefreshDB(reToken) {
+ 
   let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB(reId);
 
