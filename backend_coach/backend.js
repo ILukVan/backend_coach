@@ -3,6 +3,7 @@ const cors = require("cors");
 const dayjs = require("dayjs");
 const nodemailer = require("nodemailer");
 const uuid = require("uuid");
+require('dotenv').config()
 
 const directTransport = require("nodemailer-direct-transport");
 require("dayjs/locale/ru");
@@ -20,7 +21,7 @@ app.use(express.json());
 
 const Sequelize = require("sequelize");
 
-const sequelize = new Sequelize("coach_client", "ivan", "qwerty", {
+const sequelize = new Sequelize(process.env.DataBase, process.env.userDB, process.env.passwordDB, {
   // host: '192.168.3.16',
   dialect: "postgres",
   logging: false,
@@ -256,7 +257,7 @@ sequelize
   .catch((err) => console.log(err));
 
 // --------------------------------------------------------------регистрация или вход---------------------------
-app.post("/SignInOrRegistration", async (req, res) => {
+app.post("/api/SignInOrRegistration", async (req, res) => {
   let values = req.body;
 
   const phoneNumber = values.phone_number;
@@ -277,7 +278,7 @@ app.post("/SignInOrRegistration", async (req, res) => {
 });
 // --------------------------------------------------------------регистрация или вход ---------------------------
 // --------------------------------------------------------------вход авторизация---------------------------
-app.post("/signIn", async (req, res) => {
+app.post("/api/signIn", async (req, res) => {
   let values = req.body;
   const phoneNumber = values.phone_number;
 
@@ -316,7 +317,7 @@ app.post("/signIn", async (req, res) => {
 // --------------------------------------------------------------вход авторизация---------------------------
 
 // -------------------------------------------------------------- регистрация---------------------------
-app.post("/registration", async (req, res) => {
+app.post("/api/registration", async (req, res) => {
   let values = req.body;
 
   const phoneNumber = values.phone_number;
@@ -393,7 +394,7 @@ app.post("/registration", async (req, res) => {
 // --------------------------------------------------------------регистрация---------------------------
 
 // --------------------------------------------------------------запрос тренировок ---------------------------
-app.get("/activities", async (req, res) => {
+app.get("/api/activities", async (req, res) => {
   const sport = await ActivityTable.findAll({
     raw: true,
     order: [
@@ -411,7 +412,7 @@ app.get("/activities", async (req, res) => {
 });
 // --------------------------------------------------------------запрос тренировок -----------------------
 // --------------------------------------------------------------отобразить тренировки по дате---------------------------
-app.post("/date_activity", async (req, res) => {
+app.post("/api/date_activity", async (req, res) => {
   let values = req.body;
   let dateSelect = dayjs(values.data);
 
@@ -439,17 +440,18 @@ app.post("/date_activity", async (req, res) => {
 });
 // --------------------------------------------------------------отобразить тренировки по дате ---------------------------
 // --------------------------------------------------------------запрос типов тренировки ---------------------------
-app.get("/workout_list", async (req, res) => {
+app.get("/api/workout_list", async (req, res) => {
   const workout = await ActivityTypesTable.findAll({
     raw: true,
     logging: false,
+    attributes: ["workout_id", "type_of_workout", "description_of_workout"],
   });
 
   res.status(200).json(workout);
 });
 // --------------------------------------------------------------запрос типов тренировки ----------------------
 // --------------------------------------------------------------запрос всех тренеров ---------------------------
-app.get("/coaches_list", async (req, res) => {
+app.get("/api/coaches_list", async (req, res) => {
   const coaches = await ClientTable.findAll({
     raw: true,
     logging: false,
@@ -466,7 +468,7 @@ app.get("/coaches_list", async (req, res) => {
 });
 // --------------------------------------------------------------запрос всех тренеров ----------------------
 // --------------------------------------------------------------Восстановление профиля---------------------------
-app.post("/restore_profile", async (req, res) => {
+app.post("/api/restore_profile", async (req, res) => {
   let values = req.body;
 
   const email = await ClientTable.findOne({
@@ -496,7 +498,7 @@ app.post("/restore_profile", async (req, res) => {
 // --------------------------------------------------------------Восстановление профиля ---------------------------
 
 // --------------------------------------------------------------Восстановление профиля, сверка кода восстановления ---------------------------
-app.post("/verify_code", async (req, res) => {
+app.post("/api/verify_code", async (req, res) => {
   let values = req.body;
   const verifyCode = values.verifyCode.trim();
   const email = await ClientTable.findOne({
@@ -521,7 +523,7 @@ app.post("/verify_code", async (req, res) => {
 });
 // --------------------------------------------------------------Восстановление профиля, сверка кода восстановления ---------------------------
 // --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
-app.put("/restore_password", async (req, res) => {
+app.put("/api/restore_password", async (req, res) => {
   let values = req.body;
 
   await ClientTable.update(
@@ -541,6 +543,8 @@ app.put("/restore_password", async (req, res) => {
 // --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
+  console.log(req.get("Authorization").replace("Bearer ", ""), typeof(req.get("Authorization").replace("Bearer ", "")), "заголовок с токенами")
+  console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
   if (!tokens) {
@@ -566,7 +570,7 @@ app.use(async function (req, res, next) {
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 
 // --------------------------------------------------------------создать тренировку ---------------------------
-app.post("/add_activity", async (req, res) => {
+app.post("/api/add_activity", async (req, res) => {
   let values = req.body;
   // console.log(values);
   let flagParams = true
@@ -610,7 +614,7 @@ app.post("/add_activity", async (req, res) => {
     occupancy_train: parseInt(values.occupancy_train),
     start_time_train: start_time,
     end_time_train: end_time,
-    description_of_train: description.description_of_workout,
+    description_of_train: description.description_of_workout.replace(/\s+/g, ' ').trim(),
     //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
     weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
     client_id: foreignId,
@@ -627,7 +631,7 @@ app.post("/add_activity", async (req, res) => {
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
 // --------------------------------------------------------------удаление тренировки ---------------------------
-app.delete("/delete_activity", async (req, res) => {
+app.delete("/api/delete_activity", async (req, res) => {
   let values = req.body.training_id;
   let delDate = req.body.date;
 
@@ -644,7 +648,7 @@ app.delete("/delete_activity", async (req, res) => {
 });
 // --------------------------------------------------------------удаление тренировки ---------------------------
 // --------------------------------------------------------------изменение тренировки ---------------------------
-app.put("/update_activity", async (req, res) => {
+app.put("/api/update_activity", async (req, res) => {
   let values = req.body;
 
   let flagParams = true
@@ -691,7 +695,7 @@ app.put("/update_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
 // --------------------------------------------------------------выход из аккаунта ---------------------------
-app.get("/logout", async (req, res) => {
+app.get("/api/logout", async (req, res) => {
   console.log("Выход из аккаунта");
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
@@ -713,7 +717,7 @@ app.get("/logout", async (req, res) => {
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 
 // --------------------------------------------------------------запрос клиентов ---------------------------
-app.get("/client_list", async (req, res) => {
+app.get("/api/client_list", async (req, res) => {
   const clients = await ClientTable.findAll({
     raw: true,
     logging: false,
@@ -725,7 +729,7 @@ app.get("/client_list", async (req, res) => {
 });
 // --------------------------------------------------------------запрос клиентов ----------------------
 // --------------------------------------------------------------запрос тренеров ---------------------------
-app.get("/coach_list", async (req, res) => {
+app.get("/api/coach_list", async (req, res) => {
   const coaches = await ClientTable.findAll({
     raw: true,
     logging: false,
@@ -737,7 +741,7 @@ app.get("/coach_list", async (req, res) => {
 // --------------------------------------------------------------запрос тренеров ----------------------
 
 // --------------------------------------------------------------сделать тренером ---------------------------
-app.post("/create_coach", async (req, res) => {
+app.post("/api/create_coach", async (req, res) => {
   let values = req.body;
 
   const newRole = await ClientTable.update(
@@ -761,7 +765,7 @@ app.post("/create_coach", async (req, res) => {
 });
 // --------------------------------------------------------------сделать тренером  ---------------------------
 // --------------------------------------------------------------удаление тренера ---------------------------
-app.delete("/delete_coach", async (req, res) => {
+app.delete("/api/delete_coach", async (req, res) => {
   let value = req.body.id;
 
   await ClientTable.destroy({
@@ -784,7 +788,7 @@ app.delete("/delete_coach", async (req, res) => {
 });
 // --------------------------------------------------------------удаление тренера ---------------------
 // --------------------------------------------------------------удаление клиента ---------------------------
-app.delete("/delete_client", async (req, res) => {
+app.delete("/api/delete_client", async (req, res) => {
   let value = req.body.id;
 
   await ClientTable.destroy({
@@ -809,7 +813,7 @@ app.delete("/delete_client", async (req, res) => {
 // --------------------------------------------------------------удаление клиента ---------------------
 
 // --------------------------------------------------------------запись на тренировку---------------------------
-app.post("/sign_up_train", async (req, res) => {
+app.post("/api/sign_up_train", async (req, res) => {
   let values = req.body;
 
   await ActivityAndClientTable.create({
@@ -821,7 +825,7 @@ app.post("/sign_up_train", async (req, res) => {
 });
 // --------------------------------------------------------------запись на тренировку ---------------------------
 // --------------------------------------------------------------отпись от тренировки---------------------------
-app.post("/unsign_up_train", async (req, res) => {
+app.post("/api/unsign_up_train", async (req, res) => {
   let values = req.body;
 
   await ActivityAndClientTable.destroy({
@@ -836,7 +840,7 @@ app.post("/unsign_up_train", async (req, res) => {
 });
 // --------------------------------------------------------------отпись от тренировки ---------------------------
 // --------------------------------------------------------------запрос клиентов для записи---------------------------
-app.post("/client_list_for_coach", async (req, res) => {
+app.post("/api/client_list_for_coach", async (req, res) => {
   const value = req.body.training_id;
   const list = await makeDifferente(value);
 
@@ -844,7 +848,7 @@ app.post("/client_list_for_coach", async (req, res) => {
 });
 // --------------------------------------------------------------запрос клиентов для записи ----------------------
 // --------------------------------------------------------------тренер записывает на тренировку  клиента--------------------------
-app.post("/sign_up_train_coach", async (req, res) => {
+app.post("/api/sign_up_train_coach", async (req, res) => {
   let values = req.body;
 
   await ActivityAndClientTable.create({
@@ -858,7 +862,7 @@ app.post("/sign_up_train_coach", async (req, res) => {
 });
 // --------------------------------------------------------------тренер записывает на тренировку  клиента---------------------------
 // --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
-app.post("/unsign_up_train_coach", async (req, res) => {
+app.post("/api/unsign_up_train_coach", async (req, res) => {
   let values = req.body;
 
   await ActivityAndClientTable.destroy({
@@ -876,12 +880,12 @@ app.post("/unsign_up_train_coach", async (req, res) => {
 // --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
 
 // --------------------------------------------------------------создать тип тренировки ---------------------------
-app.post("/add_workout", (req, res) => {
+app.post("/api/add_workout", (req, res) => {
   let values = req.body;
 
   ActivityTypesTable.create({
-    type_of_workout: values.type_of_workout.trim(),
-    description_of_workout: values.description_of_workout.trim(),
+    type_of_workout: values.type_of_workout.replace(/\s+/g, ' ').trim(),
+    description_of_workout: values.description_of_workout.replace(/\s+/g, ' ').trim(),
     client_id: foreignId,
   })
     .then((data) => {
@@ -893,7 +897,7 @@ app.post("/add_workout", (req, res) => {
 });
 // --------------------------------------------------------------создать тип тренировки ---------------------------
 // --------------------------------------------------------------удаление типа тренировки ---------------------------
-app.delete("/delete_workout_activity", async (req, res) => {
+app.delete("/api/delete_workout_activity", async (req, res) => {
   let values = req.body.training_id;
 
   await ActivityTypesTable.destroy({
@@ -913,12 +917,12 @@ app.delete("/delete_workout_activity", async (req, res) => {
 });
 // --------------------------------------------------------------удаление типа тренировки ---------------------------
 // --------------------------------------------------------------изменение типа тренировки ---------------------------
-app.put("/update_workout", async (req, res) => {
+app.put("/api/update_workout", async (req, res) => {
   let values = req.body;
   await ActivityTypesTable.update(
     {
-      type_of_workout: values.type_of_workout.trim(),
-      description_of_workout: values.description_of_workout.trim(),
+      type_of_workout: values.type_of_workout.replace(/\s+/g, ' ').trim(),
+      description_of_workout: values.description_of_workout.replace(/\s+/g, ' ').trim(),
     },
     {
       where: {
@@ -937,7 +941,7 @@ app.put("/update_workout", async (req, res) => {
 });
 // --------------------------------------------------------------изменение типа тренировки ---------------------------
 // --------------------------------------------------------------запрос профиля пользователя---------------------------
-app.post("/profile", async (req, res) => {
+app.post("/api/profile", async (req, res) => {
   let id = req.body.id;
 
   const clientProfile = await ClientTable.findOne({
@@ -963,7 +967,7 @@ app.post("/profile", async (req, res) => {
 });
 // --------------------------------------------------------------запрос профиля пользователя ----------------------
 // --------------------------------------------------------------запрос посещенных тренировок---------------------------
-app.post("/visited_trains", async (req, res) => {
+app.post("/api/visited_trains", async (req, res) => {
   let visited = [];
   let id = req.body;
 
@@ -989,7 +993,7 @@ app.post("/visited_trains", async (req, res) => {
 });
 // ---------------------------------------------------------------запрос посещенных тренировок ----------------------
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
-app.put("/update_profile", async (req, res) => {
+app.put("/api/update_profile", async (req, res) => {
   let values = req.body;
 
   const nameClientTrim =
@@ -1088,7 +1092,7 @@ console.log(reservedEmail);
       client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
       client_patronymic: patronymicClientTrim,
       client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
-      client_birthday: dayjs(values.client_birthday).isValid() && dayjs(values.client_birthday).format("YYYY-MM-DD"),
+      client_birthday: values.client_birthday && dayjs(values.client_birthday).isValid() && dayjs(values.client_birthday).format("YYYY-MM-DD"),
       client_fio: fioDB,
       client_email: values.client_email,
       client_job: values.client_job ? await coachJob(values) : null ,
@@ -1138,7 +1142,7 @@ console.log(reservedEmail);
 
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
 // --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
-app.put("/update_password", async (req, res) => {
+app.put("/api/update_password", async (req, res) => {
   let values = req.body;
   console.log(values, "--------------------old new pass");
 
@@ -1229,7 +1233,7 @@ async function makeDifferente(training_id) {
 }
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов----------------------
 // -------------------------------------------------------------- регистрация пробников---------------------------
-app.get("/registration_probnik", async (req, res) => {
+app.get("/api/registration_probnik", async (req, res) => {
   let currentProbnik = await ClientTable.findAll({
     raw: true,
     logging: false,
@@ -1278,6 +1282,7 @@ app.get("/registration_probnik", async (req, res) => {
 });
 // --------------------------------------------------------------регистрация пробников---------------------------
 // начинаем прослушивание подключений на 3000 порту
+console.log(process.env.DataBase)
 app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
@@ -1289,27 +1294,27 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-  const secret = "ivan";
+
   const options = { expiresIn: "5m" };
 
-  return jwt.sign(payload, secret, options);
+  return jwt.sign(payload, process.env.secretJWTaccess, options);
 }
 
 function generateRefreshToken(value) {
   const payload = {
     id: value,
   };
-  const secret = "Luk";
+
   const options = { expiresIn: "30d" };
 
-  return jwt.sign(payload, secret, options);
+  return jwt.sign(payload, process.env.secretJWTrefresh, options);
 }
 
 function verifyAccessToken(token) {
-  const secret = "ivan";
+
 
   try {
-    const decoded = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, process.env.secretJWTaccess);
     return { success: true, data: decoded };
   } catch (error) {
     return { success: false, error: error.message };
@@ -1317,10 +1322,10 @@ function verifyAccessToken(token) {
 }
 
 function verifyRefreshToken(token) {
-  const secret = "Luk";
+
 
   try {
-    const decoded = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secretJWTrefresh);
     return { success: true, data: decoded };
   } catch (error) {
     return { success: false, error: error.message };
@@ -1361,7 +1366,9 @@ async function generateFreshforDB(user) {
 }
 
 async function refreshRefreshTokenDB(reToken) {
+  console.log(reToken, "----------------retoken----------")
   let reId = await verifyRefreshToken(reToken).data.id;
+
   let user = await findRefreshInDB(reId);
 
   if (reToken === user.refresh_key_client) {
