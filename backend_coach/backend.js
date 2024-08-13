@@ -5,6 +5,19 @@ const nodemailer = require("nodemailer");
 const uuid = require("uuid");
 require('dotenv').config()
 
+const DeviceDetector = require('node-device-detector');
+
+
+
+const detector = new DeviceDetector({
+  clientIndexes: false,
+  deviceIndexes: false,
+  deviceAliasCode: true,
+  deviceTrusted: false,
+  deviceInfo: true,
+  maxUserAgentSize: 500,
+});
+
 const directTransport = require("nodemailer-direct-transport");
 require("dayjs/locale/ru");
 dayjs.locale("ru");
@@ -22,7 +35,7 @@ app.use(express.json());
 const Sequelize = require("sequelize");
 
 const sequelize = new Sequelize(process.env.DataBase, process.env.userDB, process.env.passwordDB, {
-  host: '192.168.3.18',
+  // host: '192.168.3.18',
   dialect: "postgres",
   logging: false,
 });
@@ -223,11 +236,36 @@ const ActivityTypesTable = sequelize.define("activity_type_table", {
   },
 });
 
+const AccsessDevice = sequelize.define(
+  "accsess_device_table",
+  {
+    refresh_key_client: {
+      type: Sequelize.TEXT,
+      allowNull: false,
+    },
+    type_of_workout: {
+      type: Sequelize.STRING,
+      allowNull: false,
+    },
+    client_id: {
+      type: Sequelize.UUID,
+      references: {
+        model: "client_tables",
+        key: "client_id",
+      },
+    },
+  },
+);
+
 const ActivityAndClientTable = sequelize.define(
   "activity_and_client_table",
   {},
   { timestamps: false }
 );
+
+ClientTable.hasMany(AccsessDevice, {
+  foreignKey: "client_id",
+});
 
 ActivityTable.belongsToMany(ClientTable, {
   through: ActivityAndClientTable,
@@ -248,6 +286,8 @@ ClientTable.hasMany(ActivityTypesTable, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });
+
+
 
 sequelize
   .sync()
@@ -544,9 +584,12 @@ app.put("/api/restore_password", async (req, res) => {
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
   // console.log(req.get("Authorization").replace("Bearer ", ""), typeof(req.get("Authorization").replace("Bearer ", "")), "заголовок с токенами")
-  // console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
+  // // console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
+  const result = detector.detect(req.headers['user-agent']);
+console.log('result parse', result.device.type);
+console.log('result parse', result.client.family);
   if (!tokens) {
     return res.status(404).end();
   }
@@ -1287,6 +1330,8 @@ app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
 
+secret = "ivan"
+
 async function generateAccessToken(user) {
   const payload = {
     id: user.client_id,
@@ -1305,13 +1350,15 @@ function generateRefreshToken(value) {
     id: value,
   };
 
+  secret = "Luk"
+
   const options = { expiresIn: "30d" };
 
   return jwt.sign(payload, process.env.secretJWTrefresh, options);
 }
 
 function verifyAccessToken(token) {
-
+secret = "ivan"
 
   try {
     const decoded = jwt.verify(token, process.env.secretJWTaccess);
@@ -1322,7 +1369,7 @@ function verifyAccessToken(token) {
 }
 
 function verifyRefreshToken(token) {
-
+secret = "Luk"
 
   try {
     const decoded = jwt.verify(token, process.env.secretJWTrefresh);
