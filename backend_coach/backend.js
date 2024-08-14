@@ -3,11 +3,10 @@ const cors = require("cors");
 const dayjs = require("dayjs");
 const nodemailer = require("nodemailer");
 const uuid = require("uuid");
-require('dotenv').config()
+require("dotenv").config();
 
-const DeviceDetector = require('node-device-detector');
-
-
+const DeviceDetector = require("node-device-detector");
+const ClientHints = require("node-device-detector/client-hints");
 
 const detector = new DeviceDetector({
   clientIndexes: false,
@@ -17,6 +16,8 @@ const detector = new DeviceDetector({
   deviceInfo: true,
   maxUserAgentSize: 500,
 });
+
+const clientHints = new ClientHints();
 
 const directTransport = require("nodemailer-direct-transport");
 require("dayjs/locale/ru");
@@ -34,11 +35,16 @@ app.use(express.json());
 
 const Sequelize = require("sequelize");
 
-const sequelize = new Sequelize(process.env.DataBase, process.env.userDB, process.env.passwordDB, {
-  // host: '192.168.3.18',
-  dialect: "postgres",
-  logging: false,
-});
+const sequelize = new Sequelize(
+  process.env.DataBase,
+  process.env.userDB,
+  process.env.passwordDB,
+  {
+    // host: '192.168.3.18',
+    dialect: "postgres",
+    logging: false,
+  }
+);
 
 try {
   sequelize.authenticate();
@@ -206,10 +212,6 @@ const ActivityTable = sequelize.define("activity_table", {
       key: "client_id",
     },
   },
-  // recorded_client: {
-  //   type: Sequelize.ARRAY(Sequelize.TEXT),
-  //   defaultValue: [],
-  // },
 });
 
 const ActivityTypesTable = sequelize.define("activity_type_table", {
@@ -236,36 +238,30 @@ const ActivityTypesTable = sequelize.define("activity_type_table", {
   },
 });
 
-const AccsessDevice = sequelize.define(
-  "accsess_device_table",
-  {
-    refresh_key_client: {
-      type: Sequelize.TEXT,
-      allowNull: false,
-    },
-    type_of_workout: {
-      type: Sequelize.STRING,
-      allowNull: false,
-    },
-    client_id: {
-      type: Sequelize.UUID,
-      references: {
-        model: "client_tables",
-        key: "client_id",
-      },
+const AccsessDevice = sequelize.define("accsess_device_table", {
+  client_id: {
+    type: Sequelize.UUID,
+    allowNull: false,
+    references: {
+      model: "client_tables",
+      key: "client_id",
     },
   },
-);
+  refresh_key_client: {
+    type: Sequelize.TEXT,
+    allowNull: false,
+  },
+  device: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+});
 
 const ActivityAndClientTable = sequelize.define(
   "activity_and_client_table",
   {},
   { timestamps: false }
 );
-
-ClientTable.hasMany(AccsessDevice, {
-  foreignKey: "client_id",
-});
 
 ActivityTable.belongsToMany(ClientTable, {
   through: ActivityAndClientTable,
@@ -286,8 +282,11 @@ ClientTable.hasMany(ActivityTypesTable, {
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
 });
-
-
+ClientTable.hasMany(AccsessDevice, {
+  foreignKey: "client_id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
 
 sequelize
   .sync()
@@ -306,6 +305,7 @@ app.post("/api/SignInOrRegistration", async (req, res) => {
       raw: true,
       where: { client_phone_number: values.phone_number },
     });
+    console.log("регистрация или вход");
 
     if (signIn) {
       res.status(200).json("sign");
@@ -321,10 +321,17 @@ app.post("/api/SignInOrRegistration", async (req, res) => {
 app.post("/api/signIn", async (req, res) => {
   let values = req.body;
   const phoneNumber = values.phone_number;
+  const deviceInfo2 =
+    detector.detect(req.headers["user-agent"]).device.type +
+    " " +
+    detector.detect(req.headers["user-agent"]).client.family +
+    " " +
+    detector.detect(req.headers["user-agent"]).client.version;
 
   if (await verifyPhoneNumber(phoneNumber)) {
     const signIn2 = await ClientTable.findOne({
       raw: true,
+      attributes: ["client_id", "client_password", "client_fio", "client_role"],
       where: { client_phone_number: values.phone_number },
     }).catch((err) => {
       console.log(
@@ -339,11 +346,11 @@ app.post("/api/signIn", async (req, res) => {
       signIn2.client_password,
       async function (error, result) {
         if (result) {
-          // авторизируем юзера
-          const result = await generateFreshforDB(signIn2);
+          const refreshKey = await addRefrefreshDB(signIn2, deviceInfo2);
+
           console.log("вход выполнен");
 
-          res.status(200).json(result);
+          res.status(200).json(refreshKey);
         } else {
           console.log(error);
           res.status(403).json("Неверный пароль");
@@ -388,10 +395,13 @@ app.post("/api/registration", async (req, res) => {
       where: { client_email: values.Email || null },
       attributes: ["client_email"],
     });
-    console.log(values, " пришли от клиента ----------------")
-    console.log(email_client?.client_email, " пришли от базы ----------------")
-    console.log(values, " пришли от клиента ----------------")
-    if (email_client?.client_email !== values.Email || values.Email===undefined) {
+    console.log(values, " пришли от клиента ----------------");
+    console.log(email_client?.client_email, " пришли от базы ----------------");
+    console.log(values, " пришли от клиента ----------------");
+    if (
+      email_client?.client_email !== values.Email ||
+      values.Email === undefined
+    ) {
       ClientTable.create({
         client_phone_number: values.phone_number,
         client_password: bcrypt.hashSync(values.client_password, salt),
@@ -399,9 +409,13 @@ app.post("/api/registration", async (req, res) => {
         client_patronymic: patronymicClientTrim,
         client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
         client_fio: fioDB,
-        client_birthday: values.client_birthday && dayjs(values.client_birthday).format("YYYY-MM-DD"),
+        client_birthday:
+          values.client_birthday &&
+          dayjs(values.client_birthday).format("YYYY-MM-DD"),
         client_email: values.Email,
-        client_job: values.client_job && values.client_job.replace("тренер студии", "тренер"),
+        client_job:
+          values.client_job &&
+          values.client_job.replace("тренер студии", "тренер"),
         client_illness: values.client_illness,
         client_messenger:
           (values.client_messenger || []).join() || "noMessengers",
@@ -409,10 +423,17 @@ app.post("/api/registration", async (req, res) => {
         .then(async (data) => {
           console.log("Регистрация успешна");
           const user = data.dataValues;
+          console.log(user, "данные регистрации");
+          const deviceInfo2 =
+          detector.detect(req.headers["user-agent"]).device.type +
+          " " +
+          detector.detect(req.headers["user-agent"]).client.family +
+          " " +
+          detector.detect(req.headers["user-agent"]).client.version;
+          const refreshKey = await addRefrefreshDB(user, deviceInfo2);
+          // const result = await generateFreshforDB(user);
 
-          const result = await generateFreshforDB(user);
-
-          res.status(200).json(result);
+          res.status(200).json(refreshKey);
         })
         .catch((err) => {
           console.log(
@@ -586,10 +607,13 @@ app.use(async function (req, res, next) {
   // console.log(req.get("Authorization").replace("Bearer ", ""), typeof(req.get("Authorization").replace("Bearer ", "")), "заголовок с токенами")
   // // console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
+  const deviceInfo2 =
+  detector.detect(req.headers["user-agent"]).device.type +
+  " " +
+  detector.detect(req.headers["user-agent"]).client.family +
+  " " +
+  detector.detect(req.headers["user-agent"]).client.version;
 
-  const result = detector.detect(req.headers['user-agent']);
-console.log('result parse', result.device.type);
-console.log('result parse', result.client.family);
   if (!tokens) {
     return res.status(404).end();
   }
@@ -598,8 +622,9 @@ console.log('result parse', result.client.family);
     foreignId = verifyAccessToken(tokens.token).data.id;
     console.log("первый этап");
     next();
-  } else if (await findRefreshDB(tokens.refreshToken)) {
-    const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken);
+  } else if (await accessToNewRefresh2(tokens.refreshToken)) {
+
+    const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken, deviceInfo2);
 
     res.status(401).json(tokensSend).end();
 
@@ -616,61 +641,69 @@ console.log('result parse', result.client.family);
 app.post("/api/add_activity", async (req, res) => {
   let values = req.body;
   // console.log(values);
-  let flagParams = true
-  for (let params in values){
+  let flagParams = true;
+  for (let params in values) {
     // console.log(values[params]);
-    if(values[params] === null){
+    if (values[params] === null) {
       console.log(values[params]);
-      flagParams = false
-      break
+      flagParams = false;
+      break;
     }
   }
   if (!flagParams) {
     console.log("Некореектные данные тренировки");
-    res.status(404).json("Проверьте данные тренировки")
-  } else if (!dayjs(values.start_time_train).isValid() || !dayjs(values.end_time_train).isValid()) {
-    console.log("Некорректное время")
-    res.status(404).json("Проверьте данные тренировки")
-  } else if (dayjs(values.start_time_train).add(15, "minute" ) > dayjs(values.end_time_train)) {
-    console.log("Некорректное время старт<конца")
-    res.status(404).json("Проверьте данные тренировки")
+    res.status(404).json("Проверьте данные тренировки");
+  } else if (
+    !dayjs(values.start_time_train).isValid() ||
+    !dayjs(values.end_time_train).isValid()
+  ) {
+    console.log("Некорректное время");
+    res.status(404).json("Проверьте данные тренировки");
+  } else if (
+    dayjs(values.start_time_train).add(15, "minute") >
+    dayjs(values.end_time_train)
+  ) {
+    console.log("Некорректное время старт<конца");
+    res.status(404).json("Проверьте данные тренировки");
   } else {
-  let start_time =
-    dayjs(values.weekday_train).format("YYYY-MM-DD") +
-    " " +
-    dayjs(values.start_time_train).format("HH:mm");
-  let end_time =
-    dayjs(values.weekday_train).format("YYYY-MM-DD") +
-    " " +
-    dayjs(values.end_time_train).format("HH:mm");
+    let start_time =
+      dayjs(values.weekday_train).format("YYYY-MM-DD") +
+      " " +
+      dayjs(values.start_time_train).format("HH:mm");
+    let end_time =
+      dayjs(values.weekday_train).format("YYYY-MM-DD") +
+      " " +
+      dayjs(values.end_time_train).format("HH:mm");
 
-  const description = await ActivityTypesTable.findOne({
-    raw: true,
-    where: { type_of_workout: values.type_of_training },
-    logging: false,
-  }).catch((err) =>
-    console.log("-------------------------find Refresh      --- ", err)
-  );
+    const description = await ActivityTypesTable.findOne({
+      raw: true,
+      where: { type_of_workout: values.type_of_training },
+      logging: false,
+    }).catch((err) =>
+      console.log("-------------------------find Refresh      --- ", err)
+    );
 
-  await ActivityTable.create({
-    type_of_training: values.type_of_training,
-    occupancy_train: parseInt(values.occupancy_train),
-    start_time_train: start_time,
-    end_time_train: end_time,
-    description_of_train: description.description_of_workout.replace(/\s+/g, ' ').trim(),
-    //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
-    weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
-    client_id: foreignId,
-    coach_train: await createFIO(foreignId),
-  }).catch((err) => console.log(err));
+    await ActivityTable.create({
+      type_of_training: values.type_of_training,
+      occupancy_train: parseInt(values.occupancy_train),
+      start_time_train: start_time,
+      end_time_train: end_time,
+      description_of_train: description.description_of_workout
+        .replace(/\s+/g, " ")
+        .trim(),
+      //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
+      weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
+      client_id: foreignId,
+      coach_train: await createFIO(foreignId),
+    }).catch((err) => console.log(err));
 
-  const sport = await getTrainsByDay(
-    dayjs(values.weekday_train).format("YYYY-MM-DD")
-  );
-  res.status(200).json(sport);
-  console.log("создал тренировку и отправил");
-  if (!req.body) return res.status(400).json("node node");
-} 
+    const sport = await getTrainsByDay(
+      dayjs(values.weekday_train).format("YYYY-MM-DD")
+    );
+    res.status(200).json(sport);
+    console.log("создал тренировку и отправил");
+    if (!req.body) return res.status(400).json("node node");
+  }
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
 // --------------------------------------------------------------удаление тренировки ---------------------------
@@ -694,46 +727,52 @@ app.delete("/api/delete_activity", async (req, res) => {
 app.put("/api/update_activity", async (req, res) => {
   let values = req.body;
 
-  let flagParams = true
-  for (let params in values){
+  let flagParams = true;
+  for (let params in values) {
     // console.log(values[params]);
-    if(values[params] === null){
+    if (values[params] === null) {
       console.log(values[params]);
-      flagParams = false
-      break
+      flagParams = false;
+      break;
     }
   }
   if (!flagParams) {
     console.log("Некореектные данные тренировки");
-    res.status(404).json("Проверьте данные тренировки")
-  } else if (!dayjs(values.start_time_train).isValid() || !dayjs(values.end_time_train).isValid()) {
-    console.log("Некорректное время")
-    res.status(404).json("Проверьте данные тренировки")
-  } else if (dayjs(values.start_time_train).add(15, "minute" ) > dayjs(values.end_time_train)) {
-    console.log("Некорректное время старт<конца")
-    res.status(404).json("Проверьте данные тренировки")
+    res.status(404).json("Проверьте данные тренировки");
+  } else if (
+    !dayjs(values.start_time_train).isValid() ||
+    !dayjs(values.end_time_train).isValid()
+  ) {
+    console.log("Некорректное время");
+    res.status(404).json("Проверьте данные тренировки");
+  } else if (
+    dayjs(values.start_time_train).add(15, "minute") >
+    dayjs(values.end_time_train)
+  ) {
+    console.log("Некорректное время старт<конца");
+    res.status(404).json("Проверьте данные тренировки");
   } else {
-  await ActivityTable.update(
-    {
-      type_of_training: values.type_of_training,
-      occupancy_train: parseInt(values.occupancy_train),
-      start_time_train: dayjs(values.start_time_train).format(
-        "YYYY-MM-DD HH:mm"
-      ),
-      end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
-      description_of_train: values.description,
-    },
-    {
-      where: {
-        training_id: values.training_id,
+    await ActivityTable.update(
+      {
+        type_of_training: values.type_of_training,
+        occupancy_train: parseInt(values.occupancy_train),
+        start_time_train: dayjs(values.start_time_train).format(
+          "YYYY-MM-DD HH:mm"
+        ),
+        end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
+        description_of_train: values.description,
       },
-    }
-  ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
+      {
+        where: {
+          training_id: values.training_id,
+        },
+      }
+    ).catch((err) => console.log("ediiiiiiiiit      --- ", err));
 
-  const sport = await getTrainsByDay(values.date);
-  res.status(200).json(sport);
-  console.log("изменил тренировку и отправил");
-} 
+    const sport = await getTrainsByDay(values.date);
+    res.status(200).json(sport);
+    console.log("изменил тренировку и отправил");
+  }
 });
 // --------------------------------------------------------------изменение тренировки ---------------------------
 
@@ -742,20 +781,20 @@ app.get("/api/logout", async (req, res) => {
   console.log("Выход из аккаунта");
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
 
-  const user = await verifyRefreshToken(tokens.refreshToken).data;
-
-  const logout = await ClientTable.update(
+  await AccsessDevice.update(
     { refresh_key_client: "logout" },
     {
       where: {
-        client_id: user.id,
+        refresh_key_client: tokens.refreshToken,
       },
     }
   )
     .then((data) => {
+      console.log("logout ok");
       res.status(200).json("успех");
     })
     .catch((err) => console.log(err));
+
 });
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 
@@ -927,8 +966,10 @@ app.post("/api/add_workout", (req, res) => {
   let values = req.body;
 
   ActivityTypesTable.create({
-    type_of_workout: values.type_of_workout.replace(/\s+/g, ' ').trim(),
-    description_of_workout: values.description_of_workout.replace(/\s+/g, ' ').trim(),
+    type_of_workout: values.type_of_workout.replace(/\s+/g, " ").trim(),
+    description_of_workout: values.description_of_workout
+      .replace(/\s+/g, " ")
+      .trim(),
     client_id: foreignId,
   })
     .then((data) => {
@@ -964,8 +1005,10 @@ app.put("/api/update_workout", async (req, res) => {
   let values = req.body;
   await ActivityTypesTable.update(
     {
-      type_of_workout: values.type_of_workout.replace(/\s+/g, ' ').trim(),
-      description_of_workout: values.description_of_workout.replace(/\s+/g, ' ').trim(),
+      type_of_workout: values.type_of_workout.replace(/\s+/g, " ").trim(),
+      description_of_workout: values.description_of_workout
+        .replace(/\s+/g, " ")
+        .trim(),
     },
     {
       where: {
@@ -1063,43 +1106,42 @@ app.put("/api/update_profile", async (req, res) => {
   const reservedEmail = await ClientTable.findOne({
     raw: true,
     logging: false,
-    attributes: ["client_email", 'client_id'],
+    attributes: ["client_email", "client_id"],
     where: { client_email: values.client_email },
   });
   const reservedNumberPhone = await ClientTable.findOne({
     raw: true,
     logging: false,
-    attributes: ["client_phone_number",  'client_id'],
+    attributes: ["client_phone_number", "client_id"],
     where: { client_phone_number: values.client_phone_number },
   });
 
-  let uniquePhoneNumber 
+  let uniquePhoneNumber;
   if (!reservedNumberPhone) {
-    uniquePhoneNumber = true
-  } else if (reservedNumberPhone.client_id === values.client_id){
-    uniquePhoneNumber = true
+    uniquePhoneNumber = true;
+  } else if (reservedNumberPhone.client_id === values.client_id) {
+    uniquePhoneNumber = true;
   } else {
-    uniquePhoneNumber = false
+    uniquePhoneNumber = false;
   }
 
-
-console.log(values.client_email );
-console.log(reservedEmail);
-  let uniqueEmail
+  console.log(values.client_email);
+  console.log(reservedEmail);
+  let uniqueEmail;
   if (!reservedEmail) {
     console.log("мыло нуленое", reservedEmail);
-    uniqueEmail = true
-  } else if (values.client_email === ""){
+    uniqueEmail = true;
+  } else if (values.client_email === "") {
     console.log("удалил мыло из профиля");
-    uniqueEmail = true
-  } else if (values.client_email === null){
+    uniqueEmail = true;
+  } else if (values.client_email === null) {
     console.log("мыло из профиля null");
-    uniqueEmail = true
-  } else if (reservedEmail.client_id === values.client_id){
+    uniqueEmail = true;
+  } else if (reservedEmail.client_id === values.client_id) {
     console.log("мыло принадлежит изменяющему");
-    uniqueEmail = true
+    uniqueEmail = true;
   } else {
-    uniqueEmail = false
+    uniqueEmail = false;
   }
 
   async function coachJob(id) {
@@ -1110,11 +1152,11 @@ console.log(reservedEmail);
       attributes: ["client_role"],
       where: { client_id: id.client_id },
     });
-    
+
     if (job.client_role === "coach" || job.client_role === "super_coach") {
-      return "тренер студии"
+      return "тренер студии";
     } else {
-      return id.client_job.replace("тренер студии", "тренер")
+      return id.client_job.replace("тренер студии", "тренер");
     }
   }
 
@@ -1124,63 +1166,57 @@ console.log(reservedEmail);
   } else if (!uniqueEmail) {
     console.log("Email уже зарегистрирован");
     res.status(406).json("Email уже зарегистрирован");
-  // } else if (!dayjs(values.client_birthday).isValid() && ) {
-  //   console.log("Некорректная дата");
-  //   res.status(406).json("Некорректная дата");
-  } 
-  else {
-   await ClientTable.update(
-    {
-      client_phone_number: values.client_phone_number,
-      client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
-      client_patronymic: patronymicClientTrim,
-      client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
-      client_birthday: values.client_birthday && dayjs(values.client_birthday).isValid() && dayjs(values.client_birthday).format("YYYY-MM-DD"),
-      client_fio: fioDB,
-      client_email: values.client_email,
-      client_job: values.client_job ? await coachJob(values) : null ,
-      client_illness: values.client_illness,
-    },
-    {
-      where: {
-        client_id: values.client_id,
+    // } else if (!dayjs(values.client_birthday).isValid() && ) {
+    //   console.log("Некорректная дата");
+    //   res.status(406).json("Некорректная дата");
+  } else {
+    await ClientTable.update(
+      {
+        client_phone_number: values.client_phone_number,
+        client_name: values.client_name.replace(/[^\p{L}]/gu, "").trim(),
+        client_patronymic: patronymicClientTrim,
+        client_surname: values.client_surname.replace(/[^\p{L}]/gu, "").trim(),
+        client_birthday:
+          values.client_birthday &&
+          dayjs(values.client_birthday).isValid() &&
+          dayjs(values.client_birthday).format("YYYY-MM-DD"),
+        client_fio: fioDB,
+        client_email: values.client_email,
+        client_job: values.client_job ? await coachJob(values) : null,
+        client_illness: values.client_illness,
       },
-    }
-  ).catch((err) => {
-    // console.log("ediiiiiiiiit      --- ", err)
-    console.log("Произошла ошибка обновления данных");
-    res.status(406).json("Произошла ошибка обновления данных");
-  });
+      {
+        where: {
+          client_id: values.client_id,
+        },
+      }
+    ).catch((err) => {
+      // console.log("ediiiiiiiiit      --- ", err)
+      console.log("Произошла ошибка обновления данных");
+      res.status(406).json("Произошла ошибка обновления данных");
+    });
 
-  const clientProfile = await ClientTable.findOne({
-    raw: true,
-    logging: false,
-    attributes: [
-      "client_phone_number",
-      "client_name",
-      "client_patronymic",
-      "client_surname",
-      "client_fio",
-      "client_birthday",
-      "client_email",
-      "client_registration_date",
-      "client_job",
-      "client_illness",
-      "client_messenger",
-    ],
-    where: { client_id: values.client_id },
-  });
+    const clientProfile = await ClientTable.findOne({
+      raw: true,
+      logging: false,
+      attributes: [
+        "client_phone_number",
+        "client_name",
+        "client_patronymic",
+        "client_surname",
+        "client_fio",
+        "client_birthday",
+        "client_email",
+        "client_registration_date",
+        "client_job",
+        "client_illness",
+        "client_messenger",
+      ],
+      where: { client_id: values.client_id },
+    });
 
-  res.status(200).json(clientProfile);
-
-
-}
-
-  
-
-  
-
-
+    res.status(200).json(clientProfile);
+  }
 });
 
 // --------------------------------------------------------------изменение профиля пользовтеля ---------------------------
@@ -1330,7 +1366,7 @@ app.listen(3500, function () {
   console.log("Сервер начал принимать запросы по адресу http://localhost:3500");
 });
 
-secret = "ivan"
+secret = "ivan";
 
 async function generateAccessToken(user) {
   const payload = {
@@ -1339,26 +1375,26 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-
-  const options = { expiresIn: "5m" };
+  const options = { expiresIn: "30s" };
 
   return jwt.sign(payload, process.env.secretJWTaccess, options);
 }
 
+// ----------------------------------------------- генерация рефреш токена ----------------------
 function generateRefreshToken(value) {
   const payload = {
     id: value,
   };
 
-  secret = "Luk"
-
   const options = { expiresIn: "30d" };
 
   return jwt.sign(payload, process.env.secretJWTrefresh, options);
 }
+// ----------------------------------------------- генерация рефреш токена ----------------------
 
+// ------------------------------------------------------ верификация аксес токенов ------------------------
 function verifyAccessToken(token) {
-secret = "ivan"
+  secret = "ivan";
 
   try {
     const decoded = jwt.verify(token, process.env.secretJWTaccess);
@@ -1367,10 +1403,10 @@ secret = "ivan"
     return { success: false, error: error.message };
   }
 }
+// ------------------------------------------------------ верификация аксес токенов ------------------------
 
+// ------------------------------------------------------ верификация рефреш токенов ------------------------
 function verifyRefreshToken(token) {
-secret = "Luk"
-
   try {
     const decoded = jwt.verify(token, process.env.secretJWTrefresh);
     return { success: true, data: decoded };
@@ -1378,7 +1414,9 @@ secret = "Luk"
     return { success: false, error: error.message };
   }
 }
+// ------------------------------------------------------ верификация рефреш токенов ------------------------
 
+// ---------------------------------------- добавление рефреша в базу -----------------------------------
 async function generateFreshforDB(user) {
   let freshKey = await generateRefreshToken(user.client_id);
 
@@ -1408,53 +1446,132 @@ async function generateFreshforDB(user) {
   } catch (error) {
     console.error("Error inserting data", error);
   }
-
-  // return userAccess;
 }
+// ---------------------------------------- добавление рефреша в базу -----------------------------------
 
-async function refreshRefreshTokenDB(reToken) {
-
+// ------------------------------------------- обновление токена в базе-----------------------------------
+async function refreshRefreshTokenDB(reToken, device) {
   let reId = await verifyRefreshToken(reToken).data.id;
-
-  let user = await findRefreshInDB(reId);
+  let user = await findRefreshInDB2(reToken);
 
   if (reToken === user.refresh_key_client) {
-    return await generateFreshforDB(user);
+    return await addRefrefreshDB(user, device);
   }
 }
-async function findRefreshDB(reToken) {
- 
-  let reId = await verifyRefreshToken(reToken).data.id;
-  let user = await findRefreshInDB(reId);
+// ------------------------------------------- обновление токена в базе-----------------------------------
 
-  if (user.refresh_key_client === reToken) {
-    console.log("токены совпали");
-  } else {
-    console.log("не совпали");
+
+// --------------------------------------------- разрешение для генерации нового рефреш токена --------------------------------------------
+// -------------------------------------------- распарсил токен, ищу владельца токена в базе и сравниваю токен в базе с пришедшим токеном------------------------------  ДЛЯ НОВОЙ БАЗЫ
+async function accessToNewRefresh2(reToken) {
+
+  let verifiedToken = await verifyRefreshToken(reToken).success;
+
+  if (verifiedToken === false) {
+    console.log("верефикация не прошла");
+    return false;
   }
-  return user.refresh_key_client === reToken;
-}
+  let refreshFromDB = await findRefreshInDB2(reToken);
 
-async function findRefreshInDB(id) {
-  let user;
-  let reTokenDB = await ClientTable.findOne({
+  if (refreshFromDB) {
+    if (refreshFromDB.refresh_key_client === reToken) {
+      console.log("токены совпали");
+    } else {
+      console.log("токены не совпали");
+    }
+  }else {
+    console.log("В базе нет рефреш токена");
+    
+    return false
+  }
+  console.log("проверка токена пройдена");
+  return refreshFromDB.refresh_key_client === reToken;
+}
+// -------------------------------------------- распарсил токен и ищу владельца токена в базе ------------------------------ ДЛЯ НОВОЙ БАЗЫ
+// --------------------------------------------- разрешение для генерации нового рефреш токена --------------------------------------------
+
+// ------------------2222222222222----------------------- поиск токена в базе -------------------00000000----------- ДЛЯ НОВОЙ БАЗЫ
+async function findRefreshInDB2(refreshToken) {
+  let reTokenDB2 = await AccsessDevice.findOne({
     raw: true,
-    where: { client_id: id },
+    where: { refresh_key_client: refreshToken },
     logging: false,
   }).catch((err) =>
-    console.log("-------------------------find Refresh      --- ", err)
+    console.log("-------------------------find Refresh--- ", err)
   );
 
-  try {
-    user = reTokenDB;
-  } catch (error) {
-    console.error("Error inserting data", error);
-    // return userAccess;
-  }
-
-  // let user = results.rows[0];
-  return user;
+  return reTokenDB2;
 }
+// ------------------2222222222222---------------------- поиск токена в базе -------------------00000000----------- ДЛЯ НОВОЙ БАЗЫ
+
+// ------------- добавление рефреша в базу при входе или регистрации -------------------
+async function addRefrefreshDB(user, deviceInfo) {
+  let refreshKey = await generateRefreshToken(user.client_id);
+  console.log("рефреш при входе или регистрации");
+  // console.log(user.client_id, refresh.refreshToken, deviceInfo, "----тут добавляю в базу");
+  const isSignUp = await AccsessDevice.findAll({
+    raw: true,
+    where: { client_id: user.client_id, device: deviceInfo },
+    logging: false,
+  });
+
+  if (!isSignUp[0]) {
+    const addRefreshDB = await AccsessDevice.create(
+      {
+        client_id: user.client_id,
+        device: deviceInfo,
+        refresh_key_client: refreshKey,
+      },
+      {
+        raw: true,
+      }
+    ).catch((err) =>
+      console.log("---------проблема добавления токена--- ", err)
+    );
+    console.log("токен добавлен");
+
+    try {
+      const userAccess = {
+        token: await generateAccessToken(user),
+        refreshToken: addRefreshDB.dataValues.refresh_key_client,
+      };
+
+      return userAccess;
+    } catch (error) {
+      console.error("Error inserting data", error);
+    }
+  } else {
+    const updateRefreshDB = await AccsessDevice.update(
+      {
+        refresh_key_client: refreshKey,
+      },
+      {
+        where: {
+          client_id: user.client_id,
+          device: deviceInfo,
+        },
+        returning: true,
+        plain: true,
+        raw: true,
+      }
+    ).catch((err) =>
+      console.log("------------проблема обнолвения токена--- ", err)
+    );
+    console.log("токен обновлен");
+
+    try {
+      const userAccess = {
+        token: await generateAccessToken(user),
+        refreshToken: updateRefreshDB[1].refresh_key_client,
+      };
+
+      return userAccess;
+    } catch (error) {
+      console.error("Error inserting data", error);
+    }
+  }
+}
+// ------- добавление рефреша в базу при входе или регистрации -------------------
 // -------------------------------------------------------функция проверки статуса тренировки ----------------------------------------------
 function setStatusTrain(start, end) {
   if (dayjs() > dayjs(end)) {
