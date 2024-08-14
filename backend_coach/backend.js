@@ -1375,7 +1375,7 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-  const options = { expiresIn: "30s" };
+  const options = { expiresIn: "10m" };
 
   return jwt.sign(payload, process.env.secretJWTaccess, options);
 }
