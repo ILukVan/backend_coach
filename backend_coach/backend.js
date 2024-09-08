@@ -152,8 +152,8 @@ const ClientTable = sequelize.define("client_table", {
     defaultValue: today,
   },
   client_pass: {
-    type: Sequelize.BOOLEAN,
-    defaultValue: false,
+    type: Sequelize.INTEGER,
+    defaultValue: 0,
   },
   client_balance_activities: {
     type: Sequelize.INTEGER,
@@ -195,6 +195,44 @@ const ActivityTable = sequelize.define("activity_table", {
   },
   weekday_train: {
     type: Sequelize.DATEONLY,
+  },
+  start_time_train: {
+    type: Sequelize.STRING,
+  },
+  end_time_train: {
+    type: Sequelize.STRING,
+  },
+  coach_train: {
+    type: Sequelize.STRING,
+  },
+  client_id: {
+    type: Sequelize.UUID,
+    references: {
+      model: "client_tables",
+      key: "client_id",
+    },
+  },
+});
+
+const ConstructorActivityTable = sequelize.define("constructor_activity_table", {
+  training_id: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },
+  type_of_training: {
+    type: Sequelize.STRING,
+    allowNull: false,
+  },
+  occupancy_train: {
+    type: Sequelize.INTEGER,
+  },
+  description_of_train: {
+    type: Sequelize.TEXT,
+  },
+  weekday_train: {
+    type: Sequelize.STRING,
   },
   start_time_train: {
     type: Sequelize.STRING,
@@ -798,6 +836,53 @@ app.get("/api/logout", async (req, res) => {
 });
 // --------------------------------------------------------------выход из аккаунта ---------------------------
 
+// --------------------------------------------------------------добавление абонемента ---------------------------
+app.put("/api/update_subscription", async (req, res) => {
+  let value = req.body;
+  console.log(value);
+  
+  const nowSubscription = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_pass"],
+    where: { client_id: value.client_id },
+  });
+
+  const addSubscription  = await ClientTable.update(
+    {
+      client_pass: Number(nowSubscription.client_pass + value.client_pass)
+    },
+    {
+      where: { client_id: value.client_id },
+    }
+  ).catch((err) => console.log("add pass    --- ", err));
+
+
+  const clientProfilePass = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: [
+      "client_phone_number",
+      "client_name",
+      "client_patronymic",
+      "client_surname",
+      "client_fio",
+      "client_birthday",
+      "client_email",
+      "client_registration_date",
+      "client_job",
+      "client_illness",
+      "client_messenger",
+      "client_pass",
+    ],
+    where: { client_id: value.client_id },
+  });
+  
+
+  res.status(200).json(clientProfilePass);
+});
+// --------------------------------------------------------------добавление абонемента ----------------------
+
 // --------------------------------------------------------------запрос клиентов ---------------------------
 app.get("/api/client_list", async (req, res) => {
   const clients = await ClientTable.findAll({
@@ -821,6 +906,8 @@ app.get("/api/coach_list", async (req, res) => {
   res.status(200).json(coaches);
 });
 // --------------------------------------------------------------запрос тренеров ----------------------
+
+
 
 // --------------------------------------------------------------сделать тренером ---------------------------
 app.post("/api/create_coach", async (req, res) => {
@@ -898,17 +985,83 @@ app.delete("/api/delete_client", async (req, res) => {
 app.post("/api/sign_up_train", async (req, res) => {
   let values = req.body;
 
-  await ActivityAndClientTable.create({
-    training_id: values.training_id,
-    client_id: foreignId,
+  const train = await ActivityTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["type_of_training"],
+    where: {  training_id: values.training_id },
   });
 
-  res.status(200).json("записан");
+  if (train.type_of_training !== "Индивидуальная тренировка") {
+      const nowSubscription = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_pass"],
+    where: { client_id: foreignId },
+  });
+
+  if (nowSubscription.client_pass > 0) {
+    await ActivityAndClientTable.create({
+      training_id: values.training_id,
+      client_id: foreignId,
+    });
+  
+    await ClientTable.update(
+      {
+        client_pass: Number(nowSubscription.client_pass - 1)
+      },
+      {
+        where: { client_id: foreignId },
+      }
+    ).catch((err) => console.log("add pass -1   --- ", err));
+    res.status(200).json("записан");
+
+  } else {
+    res.status(405).json("нет абонемента");
+  }
+  } else {
+
+    await ActivityAndClientTable.create({
+      training_id: values.training_id,
+      client_id: foreignId,
+    });
+    
+    res.status(200).json("записан");
+  }
+
 });
 // --------------------------------------------------------------запись на тренировку ---------------------------
 // --------------------------------------------------------------отпись от тренировки---------------------------
 app.post("/api/unsign_up_train", async (req, res) => {
   let values = req.body;
+
+  const train = await ActivityTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["type_of_training"],
+    where: {  training_id: values.training_id },
+  });
+
+  if (train.type_of_training !== "Индивидуальная тренировка") {
+      const nowSubscription = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_pass"],
+    where: { client_id: foreignId },
+  });
+
+    await ClientTable.update(
+      {
+        client_pass: Number(nowSubscription.client_pass + 1)
+      },
+      {
+        where: { client_id: foreignId },
+      }
+    ).catch((err) => console.log("add pass +1   --- ", err));
+
+    console.log("отписан");
+    
+  } 
 
   await ActivityAndClientTable.destroy({
     where: {
@@ -1045,6 +1198,7 @@ app.post("/api/profile", async (req, res) => {
       "client_job",
       "client_illness",
       "client_messenger",
+      "client_pass"
     ],
     where: { client_id: id },
   });
