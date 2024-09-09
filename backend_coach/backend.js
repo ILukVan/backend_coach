@@ -1014,7 +1014,12 @@ app.post("/api/sign_up_train", async (req, res) => {
         where: { client_id: foreignId },
       }
     ).catch((err) => console.log("add pass -1   --- ", err));
-    res.status(200).json("записан");
+    const subPass = {
+      client_pass: nowSubscription.client_pass - 1,
+      pass_status: "Вы записаны на тренировку"
+    }
+    
+    res.status(200).json(subPass);
 
   } else {
     res.status(405).json("нет абонемента");
@@ -1026,7 +1031,12 @@ app.post("/api/sign_up_train", async (req, res) => {
       client_id: foreignId,
     });
     
-    res.status(200).json("записан");
+    const subPassIndivid = {
+      client_pass: "",
+      pass_status: "Вы записаны на тренировку"
+    }
+
+    res.status(200).json(subPassIndivid);
   }
 
 });
@@ -1514,6 +1524,74 @@ app.get("/api/registration_probnik", async (req, res) => {
   }
 });
 // --------------------------------------------------------------регистрация пробников---------------------------
+
+// +++++++++++++++++++++++++++++++++++++++++++++++++++ конструктор тренировок ++++++++++++++++++++++++++++++++++
+// ------------------------------------ создать тренировку в конструкторе -------------------------------
+app.post("/api/add_activity_constructor", async (req, res) => {
+  let values = req.body;
+  console.log(values, "создать тренировку в конструкторе");
+  let flagParams = true;
+  for (let params in values) {
+    // console.log(values[params]);
+    if (values[params] === null) {
+      console.log(values[params]);
+      flagParams = false;
+      break;
+    }
+  }
+  if (!flagParams) {
+    console.log("Некореектные данные тренировки");
+    res.status(404).json("Проверьте данные тренировки");
+  } else if (
+    !dayjs(values.start_time_train).isValid() ||
+    !dayjs(values.end_time_train).isValid()
+  ) {
+    console.log("Некорректное время");
+    res.status(404).json("Проверьте данные тренировки");
+  } else if (
+    dayjs(values.start_time_train).add(15, "minute") >
+    dayjs(values.end_time_train)
+  ) {
+    console.log("Некорректное время старт<конца");
+    res.status(404).json("Проверьте данные тренировки");
+  } else {
+    let start_time = dayjs(values.start_time_train).format("HH:mm");
+    let end_time = dayjs(values.end_time_train).format("HH:mm");
+
+    const description = await ActivityTypesTable.findOne({
+      raw: true,
+      where: { type_of_workout: values.type_of_training },
+      logging: false,
+    }).catch((err) =>
+      console.log("-------------------------find Refresh      --- ", err)
+    );
+
+    await ConstructorActivityTable.create({
+      type_of_training: values.type_of_training,
+      occupancy_train: parseInt(values.occupancy_train),
+      start_time_train: start_time,
+      end_time_train: end_time,
+      description_of_train: description.description_of_workout
+        .replace(/\s+/g, " ")
+        .trim(),
+      //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
+      weekday_train: values.weekday_train,
+      client_id: foreignId,
+      coach_train: await createFIO(foreignId),
+    }).catch((err) => console.log(err));
+
+    // const sport = await getTrainsByDay(
+    //   dayjs(values.weekday_train).format("YYYY-MM-DD")
+    // );
+    // res.status(200).json(sport);
+    console.log("создал тренировку и отправил");
+    if (!req.body) return res.status(400).json("node node");
+  }
+});
+// ------------------------------------ создать тренировку в конструкторе -------------------------------
+// +++++++++++++++++++++++++++++++++++++++++++++++++++ конструктор тренировок ++++++++++++++++++++++++++++++++++
+
+
 // начинаем прослушивание подключений на 3000 порту
 
 app.listen(3500, function () {
