@@ -744,6 +744,87 @@ app.post("/api/add_activity", async (req, res) => {
   }
 });
 // --------------------------------------------------------------создать тренировку ---------------------------
+
+// --------------------------------------------------------------создать тренировку по шаблону---------------------------
+app.post("/api/add_activity_template", async (req, res) => {
+  let values = req.body;
+  
+  console.log(values);
+  
+
+  const weekDayTrain = await ConstructorActivityTable.findAll({
+    raw: true,
+    where: { weekday_train: dayjs(values.weekday_train).format("dddd"), client_id: foreignId },
+    logging: false,
+    order: [["start_time_train", "ASC"]],
+    attributes: ["training_id", "type_of_training", "occupancy_train", "weekday_train", "start_time_train", "end_time_train"],
+  }).catch((err) =>
+    console.log("-------------------------find Refresh      --- ", err)
+  );
+
+  // console.log(weekDayTrain);
+  
+  for (const train of weekDayTrain) {
+    console.log(train);
+
+    const description = await ActivityTypesTable.findOne({
+      raw: true,
+      where: { type_of_workout: train.type_of_training },
+      logging: false,
+    }).catch((err) =>
+      console.log("-------------------------find Refresh      --- ", err)
+    );
+    
+    let start_time =
+    dayjs(values.weekday_train).format("YYYY-MM-DD") +
+    " " + train.start_time_train;
+    let end_time =
+    dayjs(values.weekday_train).format("YYYY-MM-DD") +
+    " " + train.end_time_train;
+    
+    await ActivityTable.create({
+      type_of_training: train.type_of_training,
+      occupancy_train: parseInt(train.occupancy_train),
+      start_time_train: start_time,
+      end_time_train: end_time,
+      description_of_train: description.description_of_workout
+        .replace(/\s+/g, " ")
+        .trim(),
+      //concatinated_time: `${dayjs(values.time[0]).format('HH:mm')} - ${dayjs(values.time[1]).format('HH:mm')}`,
+      weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
+      client_id: foreignId,
+      coach_train: await createFIO(foreignId),
+    }).catch((err) => console.log(err));
+
+  }
+
+
+  const sport = await ActivityTable.findAll({
+    raw: true,
+    order: [
+      // массив для сортировки начинается с модели
+      // затем следует название поля и порядок сортировки
+      ["start_time_train", "ASC"],
+    ],
+    where: {
+      weekday_train: values.weekday_train,
+    },
+  });
+  addStatusTrain(sport);
+  await trainVisiters(sport);
+
+  res.status(200).json(sport);
+
+  console.log("отправил расписание шаблона");
+
+
+    // const sport = await getTrainsByDay(
+    //   dayjs(values.weekday_train).format("YYYY-MM-DD")
+    // );
+    // res.status(200).json(sport);
+
+});
+// --------------------------------------------------------------создать тренировку по шаблону---------------------------
 // --------------------------------------------------------------удаление тренировки ---------------------------
 app.delete("/api/delete_activity", async (req, res) => {
   let values = req.body.training_id;
@@ -1095,6 +1176,7 @@ app.post("/api/client_list_for_coach", async (req, res) => {
 // --------------------------------------------------------------тренер записывает на тренировку  клиента--------------------------
 app.post("/api/sign_up_train_coach", async (req, res) => {
   let values = req.body;
+  
 
   await ActivityAndClientTable.create({
     training_id: values.training_id,
@@ -1529,7 +1611,6 @@ app.get("/api/registration_probnik", async (req, res) => {
 // ------------------------------------ создать тренировку в конструкторе -------------------------------
 app.post("/api/add_activity_constructor", async (req, res) => {
   let values = req.body;
-  console.log(values, "создать тренировку в конструкторе");
   let flagParams = true;
   for (let params in values) {
     // console.log(values[params]);
@@ -1589,6 +1670,92 @@ app.post("/api/add_activity_constructor", async (req, res) => {
   }
 });
 // ------------------------------------ создать тренировку в конструкторе -------------------------------
+// ------------------------------------- запрос тренировок по дню недели --------------------------------
+app.post("/api/activity_constructor", async (req, res) => {
+  const weekday = req.body
+  console.log(weekday);
+  const weekDayTrain = await ConstructorActivityTable.findAll({
+    raw: true,
+    where: { weekday_train: weekday.weekday_train, client_id: foreignId },
+    logging: false,
+    order: [["start_time_train", "ASC"]],
+    attributes: ["training_id", "type_of_training", "occupancy_train", "weekday_train", "start_time_train", "end_time_train"],
+  }).catch((err) =>
+    console.log("-------------------------find Refresh      --- ", err)
+  );
+
+  console.log(weekDayTrain);
+  res.status(200).json(weekDayTrain);
+
+});
+// ------------------------------------- запрос тренировок по дню недели --------------------------------
+// ------------------------------------- изменить тренировку в конструкторе --------------------------------
+app.put("/api/edit_activity_constructor", async (req, res) => {
+  const value = req.body
+
+  let start_time = dayjs(value.start_time_train).format("HH:mm");
+  let end_time = dayjs(value.end_time_train).format("HH:mm");
+
+  await ConstructorActivityTable.update(
+    {
+      type_of_training: value.type_of_training,
+      occupancy_train: value.occupancy_train,
+      start_time_train: start_time,
+      end_time_train: end_time,
+    },
+    {
+      where: {
+        training_id: value.training_id,
+      },
+      raw: true,
+    }
+  ).catch((err) =>
+    console.log("------------проблема обнолвения в конструкторе тренировок--- ", err)
+  );
+  
+  const weekDayTrain = await ConstructorActivityTable.findAll({
+    raw: true,
+    where: { weekday_train: value.weekday_train, client_id: foreignId },
+    logging: false,
+    order: [["start_time_train", "ASC"]],
+    attributes: ["training_id", "type_of_training", "occupancy_train", "weekday_train", "start_time_train", "end_time_train"],
+  }).catch((err) =>
+    console.log("-------------------------все тренировки по дню недели      --- ", err)
+  );
+
+  console.log(weekDayTrain);
+  res.status(200).json(weekDayTrain);
+
+});
+// ------------------------------------- изменить тренировку в конструкторе --------------------------------
+// ------------------------------------- удалить тренировку в конструкторе --------------------------------
+app.delete("/api/delete_activity_constructor", async (req, res) => {
+  const value = req.body
+  console.log(value);
+  
+  await ConstructorActivityTable.destroy({
+    where: {
+      training_id: value.training_id,
+    },
+    individualHooks: true,
+  }).catch((err) => console.log(err));
+  
+  const weekDayTrain = await ConstructorActivityTable.findAll({
+    raw: true,
+    where: { weekday_train: value.weekday_train, client_id: foreignId },
+    logging: false,
+    order: [["start_time_train", "ASC"]],
+    attributes: ["training_id", "type_of_training", "occupancy_train", "weekday_train", "start_time_train", "end_time_train"],
+  }).catch((err) =>
+    console.log("-------------------------все тренировки по дню недели      --- ", err)
+  );
+
+  console.log(weekDayTrain);
+  res.status(200).json(weekDayTrain);
+
+});
+// ------------------------------------- удалить тренировку в конструкторе --------------------------------
+
 // +++++++++++++++++++++++++++++++++++++++++++++++++++ конструктор тренировок ++++++++++++++++++++++++++++++++++
 
 
