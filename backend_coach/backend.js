@@ -433,9 +433,7 @@ app.post("/api/registration", async (req, res) => {
       where: { client_email: values.Email || null },
       attributes: ["client_email"],
     });
-    console.log(values, " пришли от клиента ----------------");
-    console.log(email_client?.client_email, " пришли от базы ----------------");
-    console.log(values, " пришли от клиента ----------------");
+
     if (
       email_client?.client_email !== values.Email ||
       values.Email === undefined
@@ -678,12 +676,11 @@ app.use(async function (req, res, next) {
 // --------------------------------------------------------------создать тренировку ---------------------------
 app.post("/api/add_activity", async (req, res) => {
   let values = req.body;
-  // console.log(values);
+
   let flagParams = true;
   for (let params in values) {
-    // console.log(values[params]);
+
     if (values[params] === null) {
-      console.log(values[params]);
       flagParams = false;
       break;
     }
@@ -748,9 +745,6 @@ app.post("/api/add_activity", async (req, res) => {
 // --------------------------------------------------------------создать тренировку по шаблону---------------------------
 app.post("/api/add_activity_template", async (req, res) => {
   let values = req.body;
-  
-  console.log(values);
-  
 
   const weekDayTrain = await ConstructorActivityTable.findAll({
     raw: true,
@@ -762,10 +756,8 @@ app.post("/api/add_activity_template", async (req, res) => {
     console.log("-------------------------find Refresh      --- ", err)
   );
 
-  // console.log(weekDayTrain);
   
   for (const train of weekDayTrain) {
-    console.log(train);
 
     const description = await ActivityTypesTable.findOne({
       raw: true,
@@ -818,11 +810,6 @@ app.post("/api/add_activity_template", async (req, res) => {
   console.log("отправил расписание шаблона");
 
 
-    // const sport = await getTrainsByDay(
-    //   dayjs(values.weekday_train).format("YYYY-MM-DD")
-    // );
-    // res.status(200).json(sport);
-
 });
 // --------------------------------------------------------------создать тренировку по шаблону---------------------------
 // --------------------------------------------------------------удаление тренировки ---------------------------
@@ -848,9 +835,9 @@ app.put("/api/update_activity", async (req, res) => {
 
   let flagParams = true;
   for (let params in values) {
-    // console.log(values[params]);
+
     if (values[params] === null) {
-      console.log(values[params]);
+
       flagParams = false;
       break;
     }
@@ -920,7 +907,6 @@ app.get("/api/logout", async (req, res) => {
 // --------------------------------------------------------------добавление абонемента ---------------------------
 app.put("/api/update_subscription", async (req, res) => {
   let value = req.body;
-  console.log(value);
   
   const nowSubscription = await ClientTable.findOne({
     raw: true,
@@ -1231,21 +1217,7 @@ app.post("/api/sign_up_train_coach", async (req, res) => {
 // --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
 app.post("/api/unsign_up_train_coach", async (req, res) => {
   let values = req.body;
-  console.log(values, "values");
-  
-  // await ActivityAndClientTable.destroy({
-  //   where: {
-  //     client_id: values.client_id,
-  //     training_id: values.training_id,
-  //   },
-  //   individualHooks: true,
-  // }).catch((err) => console.log(err));
 
-  // const list = await makeDifferente(values.training_id);
-
-
-
-  // --------------
   const train = await ActivityTable.findOne({
     raw: true,
     logging: false,
@@ -1260,7 +1232,7 @@ app.post("/api/unsign_up_train_coach", async (req, res) => {
     attributes: ["client_pass"],
     where: { client_id: values.client_id },
   });
-  console.log(nowSubscription, "----hjfhjf----");
+
   
     await ClientTable.update(
       {
@@ -1454,8 +1426,7 @@ app.put("/api/update_profile", async (req, res) => {
     uniquePhoneNumber = false;
   }
 
-  console.log(values.client_email);
-  console.log(reservedEmail);
+
   let uniqueEmail;
   if (!reservedEmail) {
     console.log("мыло нуленое", reservedEmail);
@@ -1474,7 +1445,6 @@ app.put("/api/update_profile", async (req, res) => {
   }
 
   async function coachJob(id) {
-    console.log(id, "что ломает и почему профессия");
     const job = await ClientTable.findOne({
       raw: true,
       logging: false,
@@ -1520,7 +1490,6 @@ app.put("/api/update_profile", async (req, res) => {
         },
       }
     ).catch((err) => {
-      // console.log("ediiiiiiiiit      --- ", err)
       console.log("Произошла ошибка обновления данных");
       res.status(406).json("Произошла ошибка обновления данных");
     });
@@ -1565,8 +1534,7 @@ app.put("/api/update_password", async (req, res) => {
     console.log(err);
     res.status(406).json("Ошибка изменения пароля");
   });
-  console.log(values.client_password, "новый пароль");
-  console.log(oldPassword.client_password, "страый пароль");
+
   bcrypt.compare(
     values.old_client_password,
     oldPassword.client_password,
@@ -1611,10 +1579,7 @@ async function makeDifferente(training_id) {
       attributes: ["client_fio", "client_id"],
       where: { client_id: client.client_id },
     });
-    console.log(
-      clientFio,
-      "------------------------- clients-------------------"
-    );
+
     recorded_clients.push(clientFio);
   }
 
@@ -1696,9 +1661,9 @@ app.post("/api/add_activity_constructor", async (req, res) => {
   let values = req.body;
   let flagParams = true;
   for (let params in values) {
-    // console.log(values[params]);
+
     if (values[params] === null) {
-      console.log(values[params]);
+
       flagParams = false;
       break;
     }
@@ -1748,6 +1713,20 @@ app.post("/api/add_activity_constructor", async (req, res) => {
     //   dayjs(values.weekday_train).format("YYYY-MM-DD")
     // );
     // res.status(200).json(sport);
+
+    const weekDayTrain = await ConstructorActivityTable.findAll({
+      raw: true,
+      where: { weekday_train: values.weekday_train, client_id: foreignId },
+      logging: false,
+      order: [["start_time_train", "ASC"]],
+      attributes: ["training_id", "type_of_training", "occupancy_train", "weekday_train", "start_time_train", "end_time_train"],
+    }).catch((err) =>
+      console.log("-------------------------find Refresh      --- ", err)
+    );
+  
+  
+    res.status(200).json(weekDayTrain);
+
     console.log("создал тренировку и отправил");
     if (!req.body) return res.status(400).json("node node");
   }
@@ -1756,7 +1735,7 @@ app.post("/api/add_activity_constructor", async (req, res) => {
 // ------------------------------------- запрос тренировок по дню недели --------------------------------
 app.post("/api/activity_constructor", async (req, res) => {
   const weekday = req.body
-  console.log(weekday);
+
   const weekDayTrain = await ConstructorActivityTable.findAll({
     raw: true,
     where: { weekday_train: weekday.weekday_train, client_id: foreignId },
@@ -1767,7 +1746,7 @@ app.post("/api/activity_constructor", async (req, res) => {
     console.log("-------------------------find Refresh      --- ", err)
   );
 
-  console.log(weekDayTrain);
+
   res.status(200).json(weekDayTrain);
 
 });
@@ -1806,7 +1785,7 @@ app.put("/api/edit_activity_constructor", async (req, res) => {
     console.log("-------------------------все тренировки по дню недели      --- ", err)
   );
 
-  console.log(weekDayTrain);
+
   res.status(200).json(weekDayTrain);
 
 });
@@ -1814,7 +1793,7 @@ app.put("/api/edit_activity_constructor", async (req, res) => {
 // ------------------------------------- удалить тренировку в конструкторе --------------------------------
 app.delete("/api/delete_activity_constructor", async (req, res) => {
   const value = req.body
-  console.log(value);
+
   
   await ConstructorActivityTable.destroy({
     where: {
@@ -1833,7 +1812,7 @@ app.delete("/api/delete_activity_constructor", async (req, res) => {
     console.log("-------------------------все тренировки по дню недели      --- ", err)
   );
 
-  console.log(weekDayTrain);
+
   res.status(200).json(weekDayTrain);
 
 });
@@ -1933,11 +1912,22 @@ async function generateFreshforDB(user) {
 
 // ------------------------------------------- обновление токена в базе-----------------------------------
 async function refreshRefreshTokenDB(reToken, device) {
-  let reId = await verifyRefreshToken(reToken).data.id;
+  // let reId = await verifyRefreshToken(reToken).data.id;
   let user = await findRefreshInDB2(reToken);
 
   if (reToken === user.refresh_key_client) {
-    return await addRefrefreshDB(user, device);
+
+    const userData = await ClientTable.findOne({
+      raw: true,
+      where: { client_id: user.client_id },
+      logging: false,
+      attributes: ["client_id", "client_fio", "client_role"]
+    }).catch((err) =>
+      console.log("-------------------------find Refresh--- ", err)
+    );
+    
+
+    return await addRefrefreshDB(userData, device);
   }
 }
 // ------------------------------------------- обновление токена в базе-----------------------------------
