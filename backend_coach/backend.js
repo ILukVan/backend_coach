@@ -669,7 +669,7 @@ app.use(async function (req, res, next) {
     console.log("Второй этап");
     // next();
   } else {
-    console.log("Третий этап");
+    console.log("!!-----Третий этап-----!!");
     res.status(403).json("необходим перелогин");
   }
 });
@@ -1176,21 +1176,104 @@ app.post("/api/client_list_for_coach", async (req, res) => {
 // --------------------------------------------------------------тренер записывает на тренировку  клиента--------------------------
 app.post("/api/sign_up_train_coach", async (req, res) => {
   let values = req.body;
-  
 
-  await ActivityAndClientTable.create({
-    training_id: values.training_id,
-    client_id: values.client_id,
+  const train = await ActivityTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["type_of_training"],
+    where: {  training_id: values.training_id },
   });
 
-  const list = await makeDifferente(values.training_id);
+  if (train.type_of_training !== "Индивидуальная тренировка") {
+      const nowSubscription = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_pass"],
+    where: { client_id: values.client_id },
+  });
 
-  res.status(200).json(list);
+  if (nowSubscription.client_pass > 0) {
+    await ActivityAndClientTable.create({
+      training_id: values.training_id,
+      client_id: values.client_id,
+    });
+  
+    await ClientTable.update(
+      {
+        client_pass: Number(nowSubscription.client_pass - 1)
+      },
+      {
+        where: { client_id: values.client_id },
+      }
+    ).catch((err) => console.log("add pass -1   --- ", err));
+
+    const list = await makeDifferente(values.training_id);
+
+    res.status(200).json(list);
+
+  } else {
+    res.status(405).json("нет абонемента");
+  }
+  } else {
+
+    await ActivityAndClientTable.create({
+      training_id: values.training_id,
+      client_id: values.client_id,
+    });
+    
+    const list = await makeDifferente(values.training_id);
+
+    res.status(200).json(list);
+  }
+
 });
 // --------------------------------------------------------------тренер записывает на тренировку  клиента---------------------------
 // --------------------------------------------------------------тренер отписывает от тренировки клиента---------------------------
 app.post("/api/unsign_up_train_coach", async (req, res) => {
   let values = req.body;
+  console.log(values, "values");
+  
+  // await ActivityAndClientTable.destroy({
+  //   where: {
+  //     client_id: values.client_id,
+  //     training_id: values.training_id,
+  //   },
+  //   individualHooks: true,
+  // }).catch((err) => console.log(err));
+
+  // const list = await makeDifferente(values.training_id);
+
+
+
+  // --------------
+  const train = await ActivityTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["type_of_training"],
+    where: {  training_id: values.training_id },
+  });
+
+  if (train.type_of_training !== "Индивидуальная тренировка") {
+      const nowSubscription = await ClientTable.findOne({
+    raw: true,
+    logging: false,
+    attributes: ["client_pass"],
+    where: { client_id: values.client_id },
+  });
+  console.log(nowSubscription, "----hjfhjf----");
+  
+    await ClientTable.update(
+      {
+        client_pass: Number(nowSubscription.client_pass + 1)
+      },
+      {
+        where: { client_id: values.client_id },
+      }
+    ).catch((err) => console.log("add pass +1   --- ", err));
+
+    console.log("отписан");
+    
+  } 
 
   await ActivityAndClientTable.destroy({
     where: {
@@ -1774,7 +1857,7 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-  const options = { expiresIn: "10m" };
+  const options = { expiresIn: "1m" };
 
   return jwt.sign(payload, process.env.secretJWTaccess, options);
 }
