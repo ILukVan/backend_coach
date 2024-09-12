@@ -57,48 +57,6 @@ var today = dayjs().format("YYYY-MM-DD");
 
 let foreignId;
 
-// const Coach_table = sequelize.define("coach_table", {
-//   coach_id: {
-//     type: Sequelize.UUID,
-//     defaultValue: Sequelize.UUIDV4,
-//     primaryKey: true,
-//     allowNull: false,
-//   },
-//   coach_name: {
-//     type: Sequelize.STRING,
-//     allowNull: false,
-//   },
-//   coach_patronymic: {
-//     type: Sequelize.STRING,
-//   },
-//   coach_surname: {
-//     type: Sequelize.STRING,
-//     allowNull: false,
-//   },
-//   coach_password: {
-//     type: Sequelize.STRING,
-//     allowNull: false,
-//   },
-//   refresh_key_coach: {
-//     type: Sequelize.TEXT,
-//   },
-//   coach_phone_number: {
-//     type: Sequelize.STRING,
-//     allowNull: false,
-//     unique: true,
-//   },
-//   coach_birthday: {
-//     type: Sequelize.DATEONLY,
-//     allowNull: false,
-//   },
-//   coach_email: {
-//     type: Sequelize.STRING,
-//   },
-//   coach_role: {
-//     type: Sequelize.STRING,
-//     defaultValue: "coach",
-//   },
-// });
 
 const ClientTable = sequelize.define("client_table", {
   client_id: {
@@ -127,9 +85,9 @@ const ClientTable = sequelize.define("client_table", {
     type: Sequelize.STRING,
     allowNull: false,
   },
-  refresh_key_client: {
-    type: Sequelize.TEXT,
-  },
+  // refresh_key_client: {
+  //   type: Sequelize.TEXT,
+  // },
   client_phone_number: {
     type: Sequelize.STRING,
     allowNull: false,
@@ -155,9 +113,9 @@ const ClientTable = sequelize.define("client_table", {
     type: Sequelize.INTEGER,
     defaultValue: 0,
   },
-  client_balance_activities: {
-    type: Sequelize.INTEGER,
-  },
+  // client_balance_activities: {
+  //   type: Sequelize.INTEGER,
+  // },
   client_job: {
     type: Sequelize.STRING,
   },
@@ -167,10 +125,10 @@ const ClientTable = sequelize.define("client_table", {
   client_messenger: {
     type: Sequelize.STRING,
   },
-  client_attended_train: {
-    type: Sequelize.ARRAY(Sequelize.TEXT),
-    defaultValue: [],
-  },
+  // client_attended_train: {
+  //   type: Sequelize.ARRAY(Sequelize.TEXT),
+  //   defaultValue: [],
+  // },
   client_restore: {
     type: Sequelize.STRING,
   },
@@ -301,6 +259,24 @@ const ActivityAndClientTable = sequelize.define(
   { timestamps: false }
 );
 
+const ClientPassTable = sequelize.define(
+  "client_pass_table",
+  {
+    client_id: {
+      type: Sequelize.UUID,
+      allowNull: false,
+      references: {
+        model: "client_tables",
+        key: "client_id",
+      },
+    },
+    history_client_pass: {
+      type: Sequelize.STRING,
+      allowNull: false,
+    },
+  },
+);
+
 ActivityTable.belongsToMany(ClientTable, {
   through: ActivityAndClientTable,
   foreignKey: "training_id",
@@ -321,6 +297,11 @@ ClientTable.hasMany(ActivityTypesTable, {
   onUpdate: "CASCADE",
 });
 ClientTable.hasMany(AccsessDevice, {
+  foreignKey: "client_id",
+  onDelete: "CASCADE",
+  onUpdate: "CASCADE",
+});
+ClientTable.hasMany(ClientPassTable, {
   foreignKey: "client_id",
   onDelete: "CASCADE",
   onUpdate: "CASCADE",
@@ -924,6 +905,11 @@ app.put("/api/update_subscription", async (req, res) => {
     }
   ).catch((err) => console.log("add pass    --- ", err));
 
+  ClientPassTable.create({
+    client_id: value.client_id,
+    history_client_pass: value.client_pass,
+  }).catch((err) => console.log("add pass clientpasstable   --- ", err));;
+
 
   const clientProfilePass = await ClientTable.findOne({
     raw: true,
@@ -949,6 +935,23 @@ app.put("/api/update_subscription", async (req, res) => {
   res.status(200).json(clientProfilePass);
 });
 // --------------------------------------------------------------добавление абонемента ----------------------
+
+// --------------------------------------------------------------запрос посещенных тренировок---------------------------
+app.post("/api/history_pass", async (req, res) => {
+  let id = req.body;
+
+  const history = await ClientPassTable.findAll({
+    raw: true,
+    logging: false,
+    attributes: ["id", "history_client_pass", "createdAt"],
+    order: [["createdAt", "DESC"]],
+    where: { client_id: id.client_id },
+  });
+
+  res.status(200).json(history);
+});
+// ---------------------------------------------------------------запрос посещенных тренировок ----------------------
+
 
 // --------------------------------------------------------------запрос клиентов ---------------------------
 app.get("/api/client_list", async (req, res) => {
@@ -1879,6 +1882,8 @@ function verifyRefreshToken(token) {
 
 // ---------------------------------------- добавление рефреша в базу -----------------------------------
 async function generateFreshforDB(user) {
+  console.log("Туту бываю !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  
   let freshKey = await generateRefreshToken(user.client_id);
 
   let newFresh = await ClientTable.update(
