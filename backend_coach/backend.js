@@ -1839,7 +1839,7 @@ async function generateAccessToken(user) {
     role: user.client_role,
   };
 
-  const options = { expiresIn: "1m" };
+  const options = { expiresIn: "30m" };
 
   return jwt.sign(payload, process.env.secretJWTaccess, options);
 }
