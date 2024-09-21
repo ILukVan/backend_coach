@@ -798,6 +798,26 @@ app.delete("/api/delete_activity", async (req, res) => {
   let values = req.body.training_id;
   let delDate = req.body.date;
 
+  console.log(req.body, "тренировка на удаление");
+  
+  const recorded_clients =  await ActivityAndClientTable.findAll({
+    where: {
+      training_id: values,
+    },
+    raw: true,
+    logging: false,
+    attributes: ["client_id"],
+  }).catch((err) => console.log(err));
+
+  const nameOfTrain = await ActivityTable.findOne({
+    where: {
+      training_id: values,
+    },
+    raw: true,
+    logging: false,
+    attributes: ["type_of_training"],
+  }).catch((err) => console.log(err));
+
   await ActivityTable.destroy({
     where: {
       training_id: values,
@@ -805,8 +825,34 @@ app.delete("/api/delete_activity", async (req, res) => {
     individualHooks: true,
   }).catch((err) => console.log(err));
 
+
+  if (nameOfTrain.type_of_training !== "Индивидуальная тренировка") {
+  for (const client of recorded_clients) {
+
+    const nowSubscription = await ClientTable.findOne({
+      raw: true,
+      logging: false,
+      attributes: ["client_pass"],
+      where: { client_id: client.client_id },
+    });
+
+    await ClientTable.update(
+      {
+        client_pass: Number(nowSubscription.client_pass + 1)
+      },
+      {
+        where: { client_id: client.client_id },
+      }
+    ).catch((err) => console.log("add pass +1   --- ", err));
+
+    console.log("отписан");
+    
+  }
+}
+
+  
   const sport = await getTrainsByDay(delDate);
-  console.log("=== удалил и отправил тренировки==");
+  console.log("=== удалил и отправил тренировки== и вернул абенементы");
   res.status(200).json(sport);
 });
 // --------------------------------------------------------------удаление тренировки ---------------------------
