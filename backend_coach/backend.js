@@ -111,7 +111,7 @@ const ClientTable = sequelize.define("client_table", {
   },
   client_pass: {
     type: Sequelize.INTEGER,
-    defaultValue: 0,
+    defaultValue: 1,
   },
   // client_balance_activities: {
   //   type: Sequelize.INTEGER,
@@ -440,7 +440,6 @@ app.post("/api/registration", async (req, res) => {
         .then(async (data) => {
           console.log("Регистрация успешна");
           const user = data.dataValues;
-          console.log(user, "данные регистрации");
           const deviceInfo2 =
           detector.detect(req.headers["user-agent"]).device.type +
           " " +
@@ -2001,6 +2000,7 @@ async function accessToNewRefresh2(reToken) {
       console.log("токены совпали");
     } else {
       console.log("токены не совпали");
+      return false
     }
   }else {
     console.log("В базе нет рефреш токена");
