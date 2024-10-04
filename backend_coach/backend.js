@@ -163,6 +163,9 @@ const ActivityTable = sequelize.define("activity_table", {
   coach_train: {
     type: Sequelize.STRING,
   },
+  complexity_of_training: {
+    type: Sequelize.STRING,
+  },
   client_id: {
     type: Sequelize.UUID,
     references: {
@@ -710,6 +713,7 @@ app.post("/api/add_activity", async (req, res) => {
       weekday_train: dayjs(values.weekday_train).format("YYYY-MM-DD"),
       client_id: foreignId,
       coach_train: await createFIO(foreignId),
+      complexity_of_training: values.type_of_training === "Барре" ? "5/6" : null
     }).catch((err) => console.log(err));
 
     const sport = await getTrainsByDay(
@@ -825,7 +829,7 @@ app.delete("/api/delete_activity", async (req, res) => {
   }).catch((err) => console.log(err));
 
 
-  if (nameOfTrain.type_of_training !== "Индивидуальная тренировка") {
+  if (nameOfTrain?.type_of_training !== "Индивидуальная тренировка") {
   for (const client of recorded_clients) {
 
     const nowSubscription = await ClientTable.findOne({
@@ -858,6 +862,8 @@ app.delete("/api/delete_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 app.put("/api/update_activity", async (req, res) => {
   let values = req.body;
+
+  console.log(values)
 
   let flagParams = true;
   for (let params in values) {
@@ -893,6 +899,7 @@ app.put("/api/update_activity", async (req, res) => {
         ),
         end_time_train: dayjs(values.end_time_train).format("YYYY-MM-DD HH:mm"),
         description_of_train: values.description,
+        complexity_of_training: values.type_of_training === "Барре" ? values.complexity_of_training : null
       },
       {
         where: {
