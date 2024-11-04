@@ -2,27 +2,14 @@ const express = require("express"); // получаем модуль express
 const cors = require("cors");
 const dayjs = require("dayjs");
 const nodemailer = require("nodemailer");
-const uuid = require("uuid");
+// const uuid = require("uuid");
 require("dotenv").config();
-
-const DeviceDetector = require("node-device-detector");
-const ClientHints = require("node-device-detector/client-hints");
-
-const detector = new DeviceDetector({
-  clientIndexes: false,
-  deviceIndexes: false,
-  deviceAliasCode: true,
-  deviceTrusted: false,
-  deviceInfo: true,
-  maxUserAgentSize: 500,
-});
-
-const clientHints = new ClientHints();
+const uap = require('ua-parser-js');
 
 const directTransport = require("nodemailer-direct-transport");
 require("dayjs/locale/ru");
 dayjs.locale("ru");
-// подключаем bcrypt
+
 var bcrypt = require("bcrypt");
 const salt = bcrypt.genSaltSync(10);
 
@@ -258,7 +245,12 @@ const AccsessDevice = sequelize.define("accsess_device_table", {
 
 const ActivityAndClientTable = sequelize.define(
   "activity_and_client_table",
-  {},
+  {  counter: {
+    type: Sequelize.UUID,
+    defaultValue: Sequelize.UUIDV4,
+    primaryKey: true,
+    allowNull: false,
+  },},
   { timestamps: false }
 );
 
@@ -342,13 +334,12 @@ app.post("/api/SignInOrRegistration", async (req, res) => {
 // --------------------------------------------------------------вход авторизация---------------------------
 app.post("/api/signIn", async (req, res) => {
   let values = req.body;
+
+  let ua = uap(req.headers['user-agent']); 
+  const device2 = ua.os.name + " " + ua.os.version + " " + ua.device.vendor + " " + ua.device.model + " " + ua.browser.name + " " + ua.device.type
+  console.log(device2);
+
   const phoneNumber = values.phone_number;
-  const deviceInfo2 =
-    detector.detect(req.headers["user-agent"]).device.type +
-    " " +
-    detector.detect(req.headers["user-agent"]).client.family +
-    " " +
-    detector.detect(req.headers["user-agent"]).client.version;
 
   if (await verifyPhoneNumber(phoneNumber)) {
     const signIn2 = await ClientTable.findOne({
@@ -368,7 +359,7 @@ app.post("/api/signIn", async (req, res) => {
       signIn2.client_password,
       async function (error, result) {
         if (result) {
-          const refreshKey = await addRefrefreshDB(signIn2, deviceInfo2);
+          const refreshKey = await addRefrefreshDB(signIn2, device2);
 
           console.log("вход выполнен");
 
@@ -443,14 +434,10 @@ app.post("/api/registration", async (req, res) => {
         .then(async (data) => {
           console.log("Регистрация успешна");
           const user = data.dataValues;
-          const deviceInfo2 =
-          detector.detect(req.headers["user-agent"]).device.type +
-          " " +
-          detector.detect(req.headers["user-agent"]).client.family +
-          " " +
-          detector.detect(req.headers["user-agent"]).client.version;
-          const refreshKey = await addRefrefreshDB(user, deviceInfo2);
-          // const result = await generateFreshforDB(user);
+          let ua = uap(req.headers['user-agent']); 
+           const device2 = ua.os.name + " " + ua.os.version + " " + ua.device.vendor + " " + ua.device.model + " " + ua.browser.name + " " + ua.device.type
+          console.log(device2);
+          const refreshKey = await addRefrefreshDB(user, device2);
 
           res.status(200).json(refreshKey);
         })
@@ -550,7 +537,8 @@ app.get("/api/coaches_list", async (req, res) => {
 // --------------------------------------------------------------Восстановление профиля---------------------------
 app.post("/api/restore_profile", async (req, res) => {
   let values = req.body;
-
+  console.log("восстановление профиля", dayjs().format("DD-MM-YYYY HH:mm"));
+  
   const email = await ClientTable.findOne({
     raw: true,
     where: { client_email: values.email },
@@ -623,15 +611,12 @@ app.put("/api/restore_password", async (req, res) => {
 // --------------------------------------------------------------восстановить пароль пользовтеля ---------------------------
 // ----------------------------------------------------------- прослойка для аутентификации----------------
 app.use(async function (req, res, next) {
-  // console.log(req.get("Authorization").replace("Bearer ", ""), typeof(req.get("Authorization").replace("Bearer ", "")), "заголовок с токенами")
-  // // console.log(req.get("Authorization").replace("Bearer ", "") === "null", "да?")
+
   let tokens = JSON.parse(req.get("Authorization").replace("Bearer ", ""));
-  const deviceInfo2 =
-  detector.detect(req.headers["user-agent"]).device.type +
-  " " +
-  detector.detect(req.headers["user-agent"]).client.family +
-  " " +
-  detector.detect(req.headers["user-agent"]).client.version;
+
+  let ua = uap(req.headers['user-agent']); 
+  const device2 = ua.os.name + " " + ua.os.version + " " + ua.device.vendor + " " + ua.device.model + " " + ua.browser.name + " " + ua.device.type
+  console.log(device2);
 
   if (!tokens) {
     return res.status(404).end();
@@ -643,7 +628,7 @@ app.use(async function (req, res, next) {
     next();
   } else if (await accessToNewRefresh2(tokens.refreshToken)) {
 
-    const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken, deviceInfo2);
+    const tokensSend = await refreshRefreshTokenDB(tokens.refreshToken, device2);
 
     res.status(401).json(tokensSend).end();
 
@@ -800,8 +785,6 @@ app.post("/api/add_activity_template", async (req, res) => {
 app.delete("/api/delete_activity", async (req, res) => {
   let values = req.body.training_id;
   let delDate = req.body.date;
-
-  console.log(req.body, "тренировка на удаление");
   
   const recorded_clients =  await ActivityAndClientTable.findAll({
     where: {
@@ -862,8 +845,6 @@ app.delete("/api/delete_activity", async (req, res) => {
 // --------------------------------------------------------------изменение тренировки ---------------------------
 app.put("/api/update_activity", async (req, res) => {
   let values = req.body;
-
-  console.log(values)
 
   let flagParams = true;
   for (let params in values) {
@@ -1576,8 +1557,8 @@ app.put("/api/update_profile", async (req, res) => {
 // --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
 app.put("/api/update_password", async (req, res) => {
   let values = req.body;
-  console.log(values, "--------------------old new pass");
-
+  console.log("смена в профиле");
+  
   const oldPassword = await ClientTable.findOne({
     raw: true,
     where: { client_id: values.client_id },
@@ -1619,6 +1600,8 @@ app.put("/api/update_password", async (req, res) => {
 // --------------------------------------------------------------изменение пароль пользовтеля ---------------------------
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов---------------------------
 async function makeDifferente(training_id) {
+  let startClientFind = dayjs().format("HH:mm:ss")
+  console.log(startClientFind, "начало поиска");
   let recorded_clients = [];
   const recorded_client = await ActivityAndClientTable.findAll({
     raw: true,
@@ -1657,6 +1640,8 @@ async function makeDifferente(training_id) {
     recorded: recorded_clients,
     difference: difference,
   };
+  console.log(dayjs().format("HH:mm:ss"), "конец поиска");
+  
   return recordAndDifference;
 }
 // --------------------------------------------------------------функция вывода клиентов и записавшихся клиентов----------------------
@@ -1932,40 +1917,40 @@ function verifyRefreshToken(token) {
 }
 // ------------------------------------------------------ верификация рефреш токенов ------------------------
 
-// ---------------------------------------- добавление рефреша в базу -----------------------------------
-async function generateFreshforDB(user) {
-  console.log("Туту бываю !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+// // ---------------------------------------- добавление рефреша в базу -----------------------------------
+// async function generateFreshforDB(user) {
+//   console.log("Туту бываю !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   
-  let freshKey = await generateRefreshToken(user.client_id);
+//   let freshKey = await generateRefreshToken(user.client_id);
 
-  let newFresh = await ClientTable.update(
-    {
-      refresh_key_client: freshKey,
-    },
-    {
-      where: {
-        client_id: user.client_id,
-      },
-      returning: true,
-      plain: true,
-      logging: false,
-    }
-  );
+//   let newFresh = await ClientTable.update(
+//     {
+//       refresh_key_client: freshKey,
+//     },
+//     {
+//       where: {
+//         client_id: user.client_id,
+//       },
+//       returning: true,
+//       plain: true,
+//       logging: false,
+//     }
+//   );
 
-  try {
-    const freshDB = newFresh[1].dataValues.refresh_key_client;
+//   try {
+//     const freshDB = newFresh[1].dataValues.refresh_key_client;
 
-    const userAccess = {
-      token: await generateAccessToken(user),
-      refreshToken: freshDB,
-    };
+//     const userAccess = {
+//       token: await generateAccessToken(user),
+//       refreshToken: freshDB,
+//     };
 
-    return userAccess;
-  } catch (error) {
-    console.error("Error inserting data", error);
-  }
-}
-// ---------------------------------------- добавление рефреша в базу -----------------------------------
+//     return userAccess;
+//   } catch (error) {
+//     console.error("Error inserting data", error);
+//   }
+// }
+// // ---------------------------------------- добавление рефреша в базу -----------------------------------
 
 // ------------------------------------------- обновление токена в базе-----------------------------------
 async function refreshRefreshTokenDB(reToken, device) {
@@ -2010,7 +1995,7 @@ async function accessToNewRefresh2(reToken) {
       return false
     }
   }else {
-    console.log("В базе нет рефреш токена");
+    console.log("токена нет в базе");
     
     return false
   }
@@ -2175,7 +2160,7 @@ async function getTrainsByDay(date) {
 
 // --------------------------------- функция отправики email-----------------------
 async function sendRestoreMail(email, code) {
-  console.log(email, code, "функция отправки мыла");
+  console.log( "функция отправки мыла");
   let transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -2185,11 +2170,11 @@ async function sendRestoreMail(email, code) {
   });
 
   let result = await transporter.sendMail({
-    from: '"Node js" <nodejs@example.com>',
+    from: '"Студия спорта" <nodejs@example.com>',
     to: email.client_email,
-    subject: "Message from Node js",
-    text: `This message was sent from Node js server.
-      Код восстановления: ${code}`,
+    subject: "Восстановление пароля в приложении 'Студия спорта'",
+    text: `Ваш код восстановления:
+     ${code}`,
     // html:
     //     `This <i>message</i> was sent from <strong>Node js</strong> server.${code}`,
   });
