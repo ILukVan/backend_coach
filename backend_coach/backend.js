@@ -21,6 +21,7 @@ app.use(cors());
 app.use(express.json());
 
 const Sequelize = require("sequelize");
+const Op = Sequelize.Op;
 
 const sequelize = new Sequelize(
   process.env.DataBase,
@@ -998,6 +999,19 @@ app.get("/api/client_list", async (req, res) => {
   res.status(200).json(clients);
 });
 // --------------------------------------------------------------запрос клиентов ----------------------
+// --------------------------------------------------------------запрос абонементов ---------------------------
+app.get("/api/small_pass", async (req, res) => {
+  const clients = await ClientTable.findAll({
+    raw: true,
+    logging: false,
+    attributes: ["client_id", "client_fio", "client_pass"],
+    order: [["client_fio", "ASC"]],
+    where: { client_pass: { [Op.between]: [0, 2] }, },
+  });
+
+  res.status(200).json(clients);
+});
+// --------------------------------------------------------------запрос абонементов ----------------------
 // --------------------------------------------------------------запрос тренеров ---------------------------
 app.get("/api/coach_list", async (req, res) => {
   const coaches = await ClientTable.findAll({
